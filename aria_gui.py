@@ -376,6 +376,10 @@ class AriaGUI:
         
         self.btn_save_hotkey = ctk.CTkButton(hotkey_frame, text="Kaydet", width=80, command=self.save_hotkey)
         self.btn_save_hotkey.grid(row=0, column=1)
+        
+        # UI Kapat Butonu Ek Özellik: Arayüzden gizleyebilmek için
+        self.btn_hide_ui = ctk.CTkButton(tab, text="⏬ Arayüzü Arka Plana Gizle", width=250, fg_color="#f39c12", hover_color="#d35400", command=self.toggle_ui)
+        self.btn_hide_ui.grid(row=9, column=1, padx=20, pady=12, sticky="w")
 
         # 8. Bilgi
         info_text = ("Bu ayarlar anlık olarak asistanınıza etki eder.\n\n"
@@ -383,7 +387,7 @@ class AriaGUI:
                      "Modeller: Local 'Ollama' modellerinizden biri seçilebilir.\n"
                      "Not: Arayüz devredeyken terminal arkaplanda kapalı modda izole edilir.")
         self.lbl_info = ctk.CTkLabel(tab, text=info_text, font=ctk.CTkFont(size=13, slant="italic"), text_color="#7f8c8d", justify="left")
-        self.lbl_info.grid(row=9, column=0, columnspan=2, padx=20, pady=30, sticky="w")
+        self.lbl_info.grid(row=10, column=0, columnspan=2, padx=20, pady=30, sticky="w")
 
         # Config'den kayıtlı rengi çek ve uygula
         kayitli_renk = self.config.get("accent_color", "#3498db")
@@ -402,10 +406,11 @@ class AriaGUI:
         
         if not hasattr(self, 'bg_label'):
             self.bg_label = ctk.CTkLabel(self.tab_view.tab("Sohbet Merkezi"), text="", image=self.bg_image)
-            self.bg_label.place(relheight=1, relwidth=1)
+            self.bg_label.place(x=0, y=0, relwidth=1, relheight=1)
             self.bg_label.lower() # En arkaya at
             # Textbox'ı Saydamlaştır
             self.chat_textbox.configure(fg_color="transparent")
+            self.chat_input_frame.configure(fg_color="transparent")
         else:
             self.bg_label.configure(image=self.bg_image)
 
@@ -523,6 +528,17 @@ class AriaGUI:
         self.save_config()
 
     def apply_accent_color(self, hex_color):
+        
+        # Eski bozuk ayar dosyasındaki yazıları temizle ve salt Hex koduna çevir
+        if "Mavi" in str(hex_color) or "#" not in str(hex_color):
+            hex_color = "#3498db"
+        elif "Yeşil" in str(hex_color):
+            hex_color = "#2ecc71"
+        elif "Mor" in str(hex_color):
+            hex_color = "#9b59b6"
+        elif "Kırmızı" in str(hex_color):
+            hex_color = "#e74c3c"
+            
         self.current_color = hex_color
         # Temel Butonları ve Widgetları Canlı Olarak Boyar:
         butons = [self.btn_chat, self.btn_settings, self.btn_bg, self.btn_send, self.btn_clear_chat, self.btn_save_hotkey, self.btn_renk]
