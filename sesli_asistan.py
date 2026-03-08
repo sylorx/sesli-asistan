@@ -30,6 +30,13 @@ from pathlib import Path
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
 
+# Overlay ses dalgası
+try:
+    from overlay import SesOverlay
+    HAS_OVERLAY = True
+except ImportError:
+    HAS_OVERLAY = False
+
 # Yeni yetenekler için modüller
 try:
     import pyautogui
@@ -138,11 +145,28 @@ class SesliAsistan:
         self.tts = pyttsx3.init()
         self._tts_ayarla()
 
-        # STT
+        # STT - optimize edilmiş parametreler
         self.recognizer = sr.Recognizer()
-        self.recognizer.energy_threshold = 300
+        self.recognizer.energy_threshold = 250       # Daha hassas (düşük = daha duyarlı)
         self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.pause_threshold = 0.8
+        self.recognizer.dynamic_energy_adjustment_damping = 0.15
+        self.recognizer.dynamic_energy_ratio = 1.5
+        self.recognizer.pause_threshold = 1.2        # Cümle sonunu bekle
+        self.recognizer.non_speaking_duration = 0.5  # Sessizlik eşiği
+
+        # Overlay
+        self.overlay = None
+        if HAS_OVERLAY:
+            try:
+                self.overlay = SesOverlay()
+                overlay_thread = threading.Thread(
+                    target=self.overlay.baslat, daemon=True
+                )
+                overlay_thread.start()
+                time.sleep(0.3)  # Overlay açılsın
+            except Exception as e:
+                print(f"Overlay başlatılamadı: {e}")
+                self.overlay = None
 
         # Durum
         self.dinliyor = True
@@ -186,35 +210,61 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
     def konuş(self, metin: str):
         """Metni sesli oku"""
         print(f"\n🔊 {ASISTAN_ADI}: {metin}\n")
-        # Markdown/özel karakterleri temizle
         temiz = re.sub(r'[*_`#\[\]()>~|]', '', metin)
         temiz = re.sub(r'\n+', '. ', temiz)
+        # Overlay'i konuşuyor moduna al
+        if self.overlay:
+            try: self.overlay.konusuyor_modu()
+            except: pass
         self.tts.say(temiz)
         self.tts.runAndWait()
+        # Konuşma bitti, bekleme moduna dön
+        if self.overlay:
+            try: self.overlay.bekleme_modu()
+            except: pass
 
     def dinle(self, zaman_asimi: int = 7, tekrar: bool = True) -> str | None:
-        """Mikrofondan ses al"""
+        """Mikrofondan ses al - optimize edilmiş"""
         with sr.Microphone() as kaynak:
+            # Overlay dinliyor moduna al
+            if self.overlay:
+                try: self.overlay.dinliyor_modu()
+                except: pass
             print("🎤 Dinliyorum...")
-            # Hassasiyeti daha da artıralım (Threshold düştükçe daha hassas olur)
-            self.recognizer.energy_threshold = 300 
-            self.recognizer.dynamic_energy_threshold = True
-            self.recognizer.adjust_for_ambient_noise(kaynak, duration=1.0)
+            # Her seferinde kısa ortam sesi analizi
+            self.recognizer.adjust_for_ambient_noise(kaynak, duration=0.3)
             try:
-                ses = self.recognizer.listen(kaynak, timeout=zaman_asimi, phrase_time_limit=30)
+                ses = self.recognizer.listen(
+                    kaynak,
+                    timeout=zaman_asimi,
+                    phrase_time_limit=20
+                )
                 print("⚙️ İşleniyor...")
-                metin = self.recognizer.recognize_google(ses, language='tr-TR')
+                if self.overlay:
+                    try: self.overlay.bekleme_modu()
+                    except: pass
+                metin = self.recognizer.recognize_google(
+                    ses, language='tr-TR',
+                    show_all=False
+                )
                 print(f"👤 Sen: {metin}")
                 return metin.lower()
             except sr.WaitTimeoutError:
+                if self.overlay:
+                    try: self.overlay.bekleme_modu()
+                    except: pass
                 return None
             except sr.UnknownValueError:
                 print("❓ Anlaşılamadı.")
-                # Her seferinde konuşup rahatsız etmesin ama kullanıcı bilsin
-                # self.konuş("Anlayamadım, tekrar eder misiniz?") 
+                if self.overlay:
+                    try: self.overlay.bekleme_modu()
+                    except: pass
                 return None
             except sr.RequestError as e:
                 print(f"❌ Google STT hatası: {e}")
+                if self.overlay:
+                    try: self.overlay.bekleme_modu()
+                    except: pass
                 self.konuş("İnternet bağlantısı sorunu var.")
                 return None
 
