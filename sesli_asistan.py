@@ -180,6 +180,8 @@ class SesliAsistan:
                     # Tkinter nesnesi ve mainloop AYNI thread'de olmalı
                     from overlay import SesOverlay
                     self.overlay = SesOverlay()
+                    if hasattr(self.overlay, 'set_model'):
+                        self.overlay.set_model(self.model)
                     self.overlay.baslat()
                 except Exception as e:
                     print(f"Overlay hatası: {e}")
@@ -260,15 +262,16 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                     phrase_time_limit=15
                 )
                 print("⚙️ İşleniyor...")
-                if self.overlay:
-                    try: self.overlay.bekleme_modu()
-                    except: pass
                 metin = self.recognizer.recognize_google(
                     ses, language='tr-TR',
                     show_all=False
                 )
+                if self.overlay:
+                    try: self.overlay.bekleme_modu(son_komut=metin)
+                    except: pass
+                metin_sonuc = metin.lower()
                 print(f"👤 Sen: {metin}")
-                return metin.lower()
+                return metin_sonuc
             except sr.WaitTimeoutError:
                 if self.overlay:
                     try: self.overlay.bekleme_modu()
@@ -362,12 +365,18 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         """Aktif modeli değiştir"""
         if model_adi in self.mevcut_ollama_modeller:
             self.model = model_adi
+            if self.overlay and hasattr(self.overlay, 'set_model'):
+                try: self.overlay.set_model(self.model)
+                except: pass
             self.sohbet_gecmisi = []  # Geçmişi temizle
             self.konuş(f"Model {model_adi} olarak değiştirildi ve sohbet geçmişi temizlendi.")
         elif self.mevcut_ollama_modeller:
             benzer = [m for m in self.mevcut_ollama_modeller if model_adi in m]
             if benzer:
                 self.model = benzer[0]
+                if self.overlay and hasattr(self.overlay, 'set_model'):
+                    try: self.overlay.set_model(self.model)
+                    except: pass
                 self.konuş(f"Model {self.model} olarak ayarlandı.")
             else:
                 self.konuş(f"Model bulunamadı. Mevcut modeller: {', '.join(self.mevcut_ollama_modeller)}")
