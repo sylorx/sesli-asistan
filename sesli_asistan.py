@@ -170,8 +170,8 @@ class SesliAsistan:
         self.recognizer = sr.Recognizer()
         self.recognizer.energy_threshold = 150
         self.recognizer.dynamic_energy_threshold = False
-        self.recognizer.pause_threshold = 1.6
-        self.recognizer.non_speaking_duration = 1.0
+        self.recognizer.pause_threshold = 0.8
+        self.recognizer.non_speaking_duration = 0.5
 
         # Varsayılan mikrofonu otomatik algıla ve göster
         self.mikrofon_index = None
@@ -192,17 +192,16 @@ class SesliAsistan:
 
             print(f"🎙️ Varsayılan mikrofon: [{self.mikrofon_index}] {mic_adi}")
             with sr.Microphone(device_index=self.mikrofon_index) as m_init:
-                self.recognizer.adjust_for_ambient_noise(m_init, duration=1.0)
+                self.recognizer.adjust_for_ambient_noise(m_init, duration=0.5)
             print(f"🔊 Ortam sesi kalibrasyonu tamamlandı (threshold: {self.recognizer.energy_threshold})")
         except Exception as e:
             print(f"⚠️ Mikrofon algılama hatası: {e}")
-            # Tüm mevcut cihazları listele
             try:
                 for i, ad in enumerate(sr.Microphone.list_microphone_names()):
                     print(f"  [{i}] {ad}")
             except: pass
 
-        # Durum ve Başlangıç Ayarları
+        self.son_sifre = ""
         self.dinliyor = True
         self.model = DEFAULT_MODEL
         self.sohbet_gecmisi = []
@@ -409,7 +408,7 @@ Date: {tarih}"""
 
         try:
             print(f"🤖 {aktif_model} düşünüyor...")
-            r = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=60)
+            r = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=20)
             if r.status_code == 200:
                 cevap = r.json()['message']['content']
                 self.sohbet_gecmisi.append({"role": "assistant", "content": cevap})
@@ -676,25 +675,43 @@ Date: {tarih}"""
             self.konuş("Panoya kopyalanamadı.")
 
     def sifre_uret(self, uzunluk: int = 16):
-        """Rastgele güvenli şifre üret ve otomatik yapıştır"""
+        """Rastgele güvenli şifre üret ve hafızaya al"""
         import string, random
         karakterler = string.ascii_letters + string.digits + "!@#$%&*"
         sifre = ''.join(random.choice(karakterler) for _ in range(uzunluk))
+        self.son_sifre = sifre # Hafızaya al
+        
         print(f"🔑 Şifre: {sifre}")
         try:
             # Panoya kopyala
-            subprocess.run(['clip'], input=sifre.encode('utf-8'), check=True)
-            self.konuş(f"{uzunluk} karakterlik şifre oluşturuldu, panoya kopyalandı ve yapıştırılıyor.")
+            subprocess.run(['clip'], input=sifre.encode('utf-8'), check=True, shell=True)
+            self.konuş(f"{uzunluk} karakterlik şifre oluşturuldu, kopyalandı.")
             
-            # 1 saniye bekle ki kullanıcı imleci istediği yere getirebilsin (opsiyonel ama güvenli)
-            # time.sleep(0.5) 
-            
-            # Otomatik yapıştır
-            if HAS_EXTRA_MODULES:
-                pyautogui.typewrite(sifre)
+            # Hafif gecikme ile yapıştır
+            threading.Timer(0.5, lambda: self.sifreyi_yapistir(konus=False)).start()
         except Exception as e:
             print(f"Şifre hatası: {e}")
             self.konuş(f"Şifre oluşturuldu: {sifre}")
+
+    def sifreyi_yapistir(self, konus=True):
+        """Hafızadaki son şifreyi ekrana yapıştır"""
+        if not self.son_sifre:
+            if konus: self.konuş("Henüz bir şifre oluşturulmadı.")
+            return
+
+        try:
+            if HAS_EXTRA_MODULES:
+                import pyautogui
+                # Panodan bağımsız doğrudan yazdır (daha güvenli)
+                pyautogui.typewrite(self.son_sifre)
+                if konus: self.konuş("Şifre yazdırıldı.")
+            else:
+                # Pano üzerinden dene
+                subprocess.run(['clip'], input=self.son_sifre.encode('utf-8'), check=True, shell=True)
+                if konus: self.konuş("Şifre panoda, yapıştırabilirsiniz.")
+        except Exception as e:
+            print(f"Yapıştırma hatası: {e}")
+            if konus: self.konuş("Şifre yazılamadı.")
 
     def matematik_hesapla(self, ifade: str):
         """Matematik hesapla"""
@@ -1174,6 +1191,9 @@ Date: {tarih}"""
             if self.overlay and hasattr(self.overlay, 'gorev_modu'):
                 self.overlay.gorev_modu("ÜRETİLDİ", "#ffea00") # Sarı/Altın
             self.sifre_uret(uzunluk)
+
+        elif any(x in m for x in ['aynı şifreyi yaz', 'şifreyi yapıştır', 'yine yaz', 'şifreyi tekrarla']):
+            self.sifreyi_yapistir()
 
         # ── Matematik ─────────────────────────
         elif any(x in m for x in ['hesapla', 'kaç eder', 'kaçtır', 'topla', 'çarp', 'böl']):
