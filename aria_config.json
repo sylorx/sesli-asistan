@@ -1,0 +1,10 @@
+{
+    "width": 1000,
+    "height": 650,
+    "pos_x": 342,
+    "pos_y": 342,
+    "theme": "Dark",
+    "accent_color": "Mavi (Default) #3498db",
+    "run_on_boot": true,
+    "toggle_hotkey": "ctrl+alt+a"
+}

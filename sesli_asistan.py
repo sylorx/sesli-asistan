@@ -393,8 +393,8 @@ Date: {tarih}"""
             print("⚠️ Ollama bağlantısı yok.")
             self.konuş("Ollama şu an çalışmıyor.")
 
-    def ollama_sor(self, soru: str, sistem: str = None, ozel_model: str = None) -> str:
-        """Ollama'ya soru sor"""
+    def ollama_sor(self, soru: str, sistem: str = None, ozel_model: str = None, resim_yolu: str = None) -> str:
+        """Ollama'ya soru veya resim sor"""
         if not sistem:
             sistem = self.sistem_promptu
 
@@ -404,7 +404,14 @@ Date: {tarih}"""
         if self.mevcut_ollama_modeller and aktif_model not in self.mevcut_ollama_modeller:
             aktif_model = self.model
 
-        self.sohbet_gecmisi.append({"role": "user", "content": soru})
+        mesaj = {"role": "user", "content": soru}
+        if resim_yolu and os.path.exists(resim_yolu):
+            import base64
+            with open(resim_yolu, "rb") as f:
+                b64_resim = base64.b64encode(f.read()).decode('utf-8')
+                mesaj["images"] = [b64_resim]
+
+        self.sohbet_gecmisi.append(mesaj)
 
         payload = {
             "model": aktif_model,
@@ -1018,8 +1025,8 @@ Date: {tarih}"""
         arama = f'powershell -c "Get-ChildItem -Path C:\\ -Recurse -Name {dosya_adi} -ErrorAction SilentlyContinue | Select-Object -First 5"'
         self.konuş(f"{dosya_adi} dosyası aranıyor.")
 
-    def komut_isle(self, metin: str) -> bool:
-        """Gelen komutu analiz et ve işle"""
+    def komut_isle(self, metin: str, resim_yolu: str = None) -> bool:
+        """Gelen metni/komutu analiz et ve gereğini yap."""
         if not metin:
             return True
 
@@ -1339,7 +1346,7 @@ Date: {tarih}"""
         # ── Ollama'ya Sor (varsayılan) ────────
         else:
             if self.mevcut_ollama_modeller:
-                cevap = self.ollama_sor(metin)
+                cevap = self.ollama_sor(metin, resim_yolu=resim_yolu)
                 self.konuş(cevap)
             else:
                 self.konuş("Ollama çalışmıyor. Sistem komutu veya yardım deyin.")
