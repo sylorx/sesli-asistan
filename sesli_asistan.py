@@ -905,37 +905,51 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         arama = f'powershell -c "Get-ChildItem -Path C:\\ -Recurse -Name {dosya_adi} -ErrorAction SilentlyContinue | Select-Object -First 5"'
         self.konuş(f"{dosya_adi} dosyası aranıyor.")
 
-    # ══════════════════════════════════════════
-    #  KOMUT İŞLEYİCİ
-    # ══════════════════════════════════════════
-
     def komut_isle(self, metin: str) -> bool:
         """Gelen komutu analiz et ve işle"""
         if not metin:
             return True
 
         m = metin.lower().strip()
+        kelimeler = m.split()
+
+        # Yardımcı: Kelimenin TAM OLARAK eşleşip eşleşmediğini kontrol et
+        def tam_esles(anahtar):
+            """'tarih' kelimesi 'tarihi' ile eşleşMEZ, sadece 'tarih' ile eşleşir"""
+            return anahtar in kelimeler
+
+        def herhangi_esles(liste):
+            """Listedeki ifadelerden biri cümlede GEÇİYORSA True"""
+            return any(x in m for x in liste)
+
+        def tam_herhangi_esles(liste):
+            """Listedeki kelimelerden biri TAM KELIME olarak varsa True"""
+            return any(k in kelimeler for k in liste)
 
         # ── Çıkış ──────────────────────────────
-        if any(x in m for x in ['çıkış', 'kapat asistanı', 'asistanı kapat', 'görüşürüz', 'hoşça kal', 'exit', 'quit', 'bay bay', 'güle güle', 'programı kapat']):
+        if herhangi_esles(['çıkış', 'kapat asistanı', 'asistanı kapat', 'görüşürüz', 'hoşça kal', 'exit', 'quit', 'bay bay', 'güle güle', 'programı kapat']):
             self.konuş("Hoşça kalın! İyi günler.")
             return False
 
         # ── Zaman/Tarih ────────────────────────
-        elif any(x in m for x in ['saat kaç', 'saat nedir', 'zaman nedir', 'vakit ne', 'şu anki saat']):
+        # "saat kaç" tam ifade olmalı
+        elif herhangi_esles(['saat kaç', 'saat nedir', 'vakit ne', 'şu anki saat']):
             self.zaman_soyle()
 
-        elif any(x in m for x in ['tarih', 'bugün ne', 'hangi gün', 'ayın kaçı', 'bugünün tarihi']):
+        # "tarih" TEK BAŞINA veya "bugün ne, hangi gün" gibi net sorular
+        elif herhangi_esles(['bugün ne', 'hangi gün', 'ayın kaçı', 'bugünün tarihi']) or \
+             (tam_esles('tarih') and len(kelimeler) <= 3 and not any(x in m for x in ['tarihi', 'tarihçe', 'tarihini'])):
             self.tarih_soyle()
 
         # ── Sistem Bilgisi ─────────────────────
-        elif any(x in m for x in ['sistem bilgi', 'işlemci', 'cpu', 'ram', 'disk', 'bilgisayar durumu', 'pc durumu']):
+        elif herhangi_esles(['sistem bilgi', 'bilgisayar durumu', 'pc durumu']) or \
+             tam_herhangi_esles(['cpu', 'ram', 'disk', 'işlemci']):
             self.sistem_bilgisi()
 
-        elif any(x in m for x in ['pil', 'batarya', 'şarj']):
+        elif tam_herhangi_esles(['pil', 'batarya', 'şarj']):
             self.pil_durumu()
 
-        elif any(x in m for x in ['ağ', 'internet hızı', 'bağlantı bilgi', 'veri kullanımı']):
+        elif herhangi_esles(['veri kullanımı', 'bağlantı bilgi']):
             self.ag_bilgisi()
 
         # ── Ses Ayarla ────────────────────────
@@ -947,7 +961,7 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                 self.konuş("Hangi seviyeye ayarlayayım?")
 
         # ── Parlaklık Ayarla ──────────────────
-        elif 'parlaklık' in m or 'ışık' in m:
+        elif 'parlaklık' in m or ('ışık' in m and any(x in m for x in ['yap', 'ayarla'])):
             try:
                 seviye = int(re.search(r'\d+', m).group())
                 self.parlaklik_ayarla(seviye)
@@ -955,7 +969,7 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                 self.konuş("Parlaklık yüzde kaç olsun?")
 
         # ── Wikipedia ─────────────────────────
-        elif any(x in m for x in ['kimdir', 'nedir', 'hakkında bilgi', 'wikipedia']):
+        elif herhangi_esles(['kimdir', 'nedir', 'hakkında bilgi', 'wikipedia']):
             sorgu = re.sub(r'kimdir|nedir|hakkında bilgi|wikipedia|\?', '', m).strip()
             self.wikipedia_ara(sorgu)
 
