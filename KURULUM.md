@@ -4,7 +4,7 @@
 
 ### 1. Python Kütüphanelerini Yükle
 ```bash
-pip install SpeechRecognition pyttsx3 requests pyaudio psutil
+pip install SpeechRecognition pyttsx3 requests pyaudio psutil pyautogui pycaw screen-brightness-control wikipedia
 ```
 
 > **PyAudio sorunu yaşarsanız:**
@@ -35,17 +35,36 @@ python sesli_asistan.py
 |-------|----------|
 | "saat kaç" | Saati söyler |
 | "bugün hangi gün" | Tarihi söyler |
+| "günaydın" / "günlük özet" | Tarih, saat, CPU, RAM, pil özeti |
 | "sistem bilgisi" | CPU/RAM/Disk durumu |
 | "pil durumu" | Pil seviyesi |
+| "wifi bilgisi" | Bağlı WiFi adını gösterir |
+| "ip adresim" | Dış IP adresini söyler |
+| "hız testi" | İnternet indirme hızını ölçer |
 | "brave aç" | Brave tarayıcı açar |
 | "steam aç" | Steam açar |
 | "discord aç" | Discord açar |
 | "notepad aç" | Not defteri açar |
+| "chrome kapat" | Chrome'u kapatır |
 | "not al: toplantı var" | Not kaydeder |
 | "notlarımı oku" | Son notları okur |
 | "20 dakika sonra hatırlat" | Alarm kurar |
+| "30 saniye geri say" | Geri sayım başlatır |
+| "sesi %50 yap" | Sistem sesini ayarlar |
+| "parlaklığı %80 yap" | Ekran parlaklığını ayarlar |
 | "YouTube'da müzik ara" | YouTube araması |
 | "hava durumu istanbul" | Hava sayfası açar |
+| "Atatürk kimdir" | Wikipedia'dan bilgi getirir |
+| "merhaba ingilizceye çevir" | Ollama ile çeviri yapar |
+| "dolar ne kadar" | Güncel döviz kuru |
+| "altın fiyatı" | Altın fiyatını söyler |
+| "25 çarpı 13 hesapla" | Matematik hesaplar |
+| "şifre üret" | 16 haneli güvenli şifre üretir |
+| "dosya ara rapor" | Masaüstü/Belgeler/İndirilenler'de arar |
+| "klasör oluştur projelerim" | Masaüstünde klasör açar |
+| "çöp kutusunu boşalt" | Geri dönüşüm kutusunu temizler |
+| "ekran görüntüsü" | Ekran görüntüsü alır |
+| "kod yaz fibonacci hesapla" | Python kodu yazar |
 | "hangi modeller var" | Ollama modellerini listeler |
 | "model değiştir mistral" | Modeli değiştirir |
 | "geçmişi temizle" | Sohbet sıfırlar |

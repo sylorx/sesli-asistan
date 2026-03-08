@@ -25,7 +25,20 @@ import sys
 import time
 import threading
 import re
+import glob
 from pathlib import Path
+from ctypes import cast, POINTER
+from comtypes import CLSCTX_ALL
+
+# Yeni yetenekler için modüller
+try:
+    import pyautogui
+    import wikipedia
+    import screen_brightness_control as sbc
+    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+    HAS_EXTRA_MODULES = True
+except ImportError:
+    HAS_EXTRA_MODULES = False
 
 # ══════════════════════════════════════════
 #  YAPILANDIRMA
@@ -143,6 +156,10 @@ Kullanıcının bilgisayarını yönetmesine yardımcı oluyorsun.
 Cevaplarını kısa, net ve Türkçe ver. Sesli okunacak olduğundan 
 emoji, madde işareti veya özel karakter kullanma. Sadece düz metin yaz.
 Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
+
+        # Ek modüller
+        if HAS_EXTRA_MODULES:
+            wikipedia.set_lang("tr")
 
         self.konuş(f"Merhaba! Ben {ASISTAN_ADI}. Nasıl yardımcı olabilirim?")
         self._ollama_kontrol()
@@ -378,17 +395,257 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         yuklenen = ag.bytes_sent // (1024**2)
         self.konuş(f"Bu oturumda {indirilen} MB indirildi, {yuklenen} MB yüklendi.")
 
+    # ══════════════════════════════════════════
+    #  YENİ YETENEKLER
+    # ══════════════════════════════════════════
+
+    def ses_seviyesi_ayarla(self, yuzde: int):
+        """Sistem sesini ayarla (pycaw kullanarak)"""
+        try:
+            devices = AudioUtilities.GetSpeakers()
+            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+            volume = cast(interface, POINTER(IAudioEndpointVolume))
+            volume.SetMasterVolumeLevelScalar(yuzde / 100, None)
+            self.konuş(f"Ses seviyesi yüzde {yuzde} yapıldı.")
+        except Exception as e:
+            print(f"Ses hatası: {e}")
+            self.konuş("Ses seviyesi ayarlanamadı.")
+
+    def parlaklik_ayarla(self, yuzde: int):
+        """Ekran parlaklığını ayarla"""
+        try:
+            sbc.set_brightness(yuzde)
+            self.konuş(f"Parlaklık yüzde {yuzde} yapıldı.")
+        except Exception as e:
+            print(f"Parlaklık hatası: {e}")
+            self.konuş("Parlaklık ayarlanamadı.")
+
+    def wikipedia_ara(self, sorgu: str):
+        """Wikipedia'da ara ve özetle"""
+        try:
+            print(f"📖 Wikipedia: {sorgu} araştırılıyor...")
+            ozet = wikipedia.summary(sorgu, sentences=2)
+            self.konuş(ozet)
+        except wikipedia.exceptions.DisambiguationError as e:
+            self.konuş(f"Birden fazla {sorgu} bulundu. Lütfen daha spesifik söyleyin.")
+        except Exception:
+            self.konuş(f"{sorgu} hakkında bilgi bulamadım.")
+
+    def cevir(self, metin: str, hedef: str = 'en'):
+        """Ollama kullanarak çevir"""
+        if not self.mevcut_ollama_modeller:
+            self.konuş("Çeviri için Ollama yüklü olmalı.")
+            return
+            
+        try:
+            dil_adi = "İngilizce"
+            if hedef == 'de': dil_adi = 'Almanca'
+            elif hedef == 'fr': dil_adi = 'Fransızca'
+            elif hedef == 'ru': dil_adi = 'Rusça'
+            
+            prompt = f"Şu metni sadece {dil_adi} diline çevir, açıklama yapma, sadece metni ver: {metin}"
+            print(f"🌍 Çevriliyor: {metin} -> {dil_adi}")
+            sonuc = self.ollama_sor(prompt, sistem="Sen profesyonel bir çevirmensin. Sadece istenen dildeki karşılığını ver.")
+            self.konuş(f"Çevirisi şöyle: {sonuc}")
+        except Exception:
+            self.konuş("Çeviri yapılamadı.")
+
+    def doviz_bilgisi(self, tip: str = "dolar"):
+        """Dolar/Euro bilgisi getir (Google Scraper)"""
+        try:
+            url = f"https://www.google.com/search?q={tip}+kaç+tl"
+            headers = {'User-Agent': 'Mozilla/5.0'}
+            r = requests.get(url, headers=headers)
+            # Basit regex ile fiyatı bul (Örn: "1 Dolar = 32,50 Türk Lirası")
+            match = re.search(r'(\d+,\d+)\s+Türk Lirası', r.text)
+            if match:
+                fiyat = match.group(1)
+                self.konuş(f"Şu an 1 {tip} yaklaşık {fiyat} Türk Lirası.")
+            else:
+                self.konuş(f"{tip} fiyatını şu an getiremiyorum.")
+        except Exception:
+            self.konuş("Döviz bilgisi alınamadı.")
+
     def ekran_goruntusu_al(self):
         """Ekran görüntüsü al"""
         try:
-            import pyautogui
             dosya = Path.home() / "Desktop" / f"ekran_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
             pyautogui.screenshot(str(dosya))
             self.konuş(f"Ekran görüntüsü masaüstüne kaydedildi.")
-        except ImportError:
-            # pyautogui yoksa Windows snipping tool aç
+        except Exception:
             subprocess.Popen("snippingtool.exe")
             self.konuş("Ekran alıntısı aracı açıldı.")
+
+    # ══════════════════════════════════════════
+    #  GELİŞMİŞ YETENEKLER
+    # ══════════════════════════════════════════
+
+    def pano_kopyala(self, metin: str):
+        """Panoya metin kopyala"""
+        try:
+            subprocess.run(['clip'], input=metin.encode('utf-8'), check=True)
+            self.konuş("Metin panoya kopyalandı.")
+        except Exception:
+            self.konuş("Panoya kopyalanamadı.")
+
+    def sifre_uret(self, uzunluk: int = 16):
+        """Rastgele güvenli şifre üret"""
+        import string, random
+        karakterler = string.ascii_letters + string.digits + "!@#$%&*"
+        sifre = ''.join(random.choice(karakterler) for _ in range(uzunluk))
+        print(f"🔑 Şifre: {sifre}")
+        try:
+            subprocess.run(['clip'], input=sifre.encode('utf-8'), check=True)
+            self.konuş(f"{uzunluk} karakterlik güvenli şifre oluşturuldu ve panoya kopyalandı.")
+        except Exception:
+            self.konuş(f"Şifre oluşturuldu: {sifre}")
+
+    def matematik_hesapla(self, ifade: str):
+        """Matematik hesapla"""
+        try:
+            temiz = re.sub(r'[^0-9+\-*/().,%^ ]', '', ifade)
+            temiz = temiz.replace(',', '.').replace('^', '**').replace('%', '/100')
+            sonuc = eval(temiz)
+            if isinstance(sonuc, float):
+                sonuc = round(sonuc, 4)
+            self.konuş(f"Sonuç: {sonuc}")
+        except Exception:
+            if self.mevcut_ollama_modeller:
+                cevap = self.ollama_sor(f"Şu matematik sorusunu çöz, sadece sonucu yaz: {ifade}",
+                                        sistem="Matematik uzmanısın. Sadece sayısal sonucu ver.")
+                self.konuş(cevap)
+            else:
+                self.konuş("Hesaplayamadım.")
+
+    def ip_bilgisi(self):
+        """Dış IP adresini göster"""
+        try:
+            r = requests.get("https://api.ipify.org?format=json", timeout=5)
+            ip = r.json()['ip']
+            self.konuş(f"Dış IP adresiniz: {ip}")
+        except Exception:
+            self.konuş("IP adresi alınamadı.")
+
+    def hiz_testi(self):
+        """Basit internet hız testi"""
+        self.konuş("İnternet hızı test ediliyor, lütfen bekleyin.")
+        try:
+            baslangic = time.time()
+            r = requests.get("https://speed.cloudflare.com/__down?bytes=10000000", timeout=30)
+            sure = time.time() - baslangic
+            boyut_mb = len(r.content) / (1024 * 1024)
+            hiz = boyut_mb / sure * 8
+            self.konuş(f"İndirme hızınız yaklaşık {hiz:.1f} megabit saniye.")
+        except Exception:
+            self.konuş("Hız testi yapılamadı.")
+
+    def geri_sayim(self, saniye_str: str):
+        """Geri sayım başlat"""
+        try:
+            saniye = int(re.search(r'\d+', saniye_str).group())
+            self.konuş(f"{saniye} saniyelik geri sayım başladı.")
+            def sayac():
+                time.sleep(saniye)
+                import winsound
+                self.konuş("Geri sayım tamamlandı!")
+                winsound.PlaySound("SystemExclamation", winsound.SND_ALIAS)
+            threading.Thread(target=sayac, daemon=True).start()
+        except Exception:
+            self.konuş("Geri sayım başlatılamadı.")
+
+    def gunluk_ozet(self):
+        """Günlük özet ver"""
+        simdi = datetime.datetime.now()
+        GUNLER = ['Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi','Pazar']
+        AYLAR = ['','Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık']
+        gun = GUNLER[simdi.weekday()]
+        tarih = f"{simdi.day} {AYLAR[simdi.month]} {simdi.year}"
+        saat = simdi.strftime('%H:%M')
+        cpu = psutil.cpu_percent(interval=0.5)
+        ram = psutil.virtual_memory()
+        pil_txt = ""
+        try:
+            pil = psutil.sensors_battery()
+            if pil:
+                pil_txt = f" Pil yüzde {int(pil.percent)}."
+        except: pass
+        ozet = (f"Günaydın! Bugün {gun}, {tarih}. Saat {saat}. "
+                f"İşlemci yüzde {cpu}, RAM yüzde {ram.percent} kullanımda.{pil_txt}")
+        self.konuş(ozet)
+
+    def dosya_bul(self, dosya_adi: str):
+        """Masaüstü ve Belgeler'de dosya ara"""
+        self.konuş(f"{dosya_adi} aranıyor.")
+        bulunanlar = []
+        arama_yerleri = [Path.home() / "Desktop", Path.home() / "Documents", Path.home() / "Downloads"]
+        for yer in arama_yerleri:
+            if yer.exists():
+                for dosya in yer.rglob(f"*{dosya_adi}*"):
+                    bulunanlar.append(str(dosya))
+                    if len(bulunanlar) >= 5:
+                        break
+        if bulunanlar:
+            self.konuş(f"{len(bulunanlar)} dosya bulundu. İlk sonuç: {bulunanlar[0]}")
+            for b in bulunanlar:
+                print(f"  📄 {b}")
+        else:
+            self.konuş(f"{dosya_adi} bulunamadı.")
+
+    def metin_ozetle(self, metin: str):
+        """Ollama ile metin özetle"""
+        if not self.mevcut_ollama_modeller:
+            self.konuş("Özetleme için Ollama gerekli.")
+            return
+        cevap = self.ollama_sor(f"Şu metni 2 cümleyle özetle: {metin}",
+                                sistem="Özetleme uzmanısın. Kısa ve net özetle.")
+        self.konuş(cevap)
+
+    def kod_yaz(self, aciklama: str):
+        """Ollama ile kod yaz"""
+        if not self.mevcut_ollama_modeller:
+            self.konuş("Kod yazmak için Ollama gerekli.")
+            return
+        cevap = self.ollama_sor(f"Şu işi yapan Python kodu yaz: {aciklama}",
+                                sistem="Python programcısısın. Temiz, çalışır kod yaz.")
+        print(f"\n💻 Kod:\n{cevap}\n")
+        self.konuş("Kodu ekrana yazdım, terminale bakabilirsiniz.")
+
+    def wifi_bilgisi(self):
+        """Bağlı WiFi bilgisini göster"""
+        try:
+            sonuc = subprocess.run(['netsh','wlan','show','interfaces'],
+                                   capture_output=True, text=True, encoding='utf-8')
+            for satir in sonuc.stdout.split('\n'):
+                if 'SSID' in satir and 'BSSID' not in satir:
+                    ag_adi = satir.split(':',1)[1].strip()
+                    self.konuş(f"Bağlı olduğunuz WiFi: {ag_adi}")
+                    return
+            self.konuş("WiFi bağlantısı bulunamadı.")
+        except Exception:
+            self.konuş("WiFi bilgisi alınamadı.")
+
+    def klasor_olustur(self, ad: str):
+        """Masaüstünde klasör oluştur"""
+        yol = Path.home() / "Desktop" / ad
+        try:
+            yol.mkdir(exist_ok=True)
+            self.konuş(f"Masaüstünde {ad} klasörü oluşturuldu.")
+        except Exception:
+            self.konuş("Klasör oluşturulamadı.")
+
+    def cop_kutusu_bosalt(self):
+        """Geri dönüşüm kutusunu boşalt"""
+        self.konuş("Geri dönüşüm kutusunu boşaltmak istediğinizden emin misiniz?")
+        onay = self.dinle(zaman_asimi=5)
+        if onay and 'evet' in onay:
+            try:
+                from ctypes import windll
+                windll.shell32.SHEmptyRecycleBinW(None, None, 0x07)
+                self.konuş("Geri dönüşüm kutusu boşaltıldı.")
+            except Exception:
+                self.konuş("Geri dönüşüm kutusu boşaltılamadı.")
+        else:
+            self.konuş("İptal edildi.")
 
     # ══════════════════════════════════════════
     #  NOT ALMA
@@ -532,19 +789,6 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         else:
             self.konuş("İptal edildi.")
 
-    def ses_ayarla(self, seviye: str):
-        """Sistem ses seviyesini ayarla"""
-        try:
-            yuzde = int(re.search(r'\d+', seviye).group())
-            yuzde = max(0, min(100, yuzde))
-            # Windows ses kontrolü (nircmd veya powershell)
-            subprocess.run(
-                f'powershell -c "(New-Object -com wscript.shell).SendKeys([char]173)"',
-                shell=True)  # Mute/unmute
-            self.konuş(f"Ses yüzde {yuzde} olarak ayarlanmaya çalışıldı.")
-        except Exception:
-            self.konuş("Ses ayarlanamadı.")
-
     def dosya_ara(self, dosya_adi: str):
         """Dosya ara"""
         subprocess.Popen(f'explorer /select,"{dosya_adi}"', shell=True)
@@ -584,10 +828,50 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         elif any(x in m for x in ['ağ', 'internet hızı', 'bağlantı bilgi', 'veri kullanımı']):
             self.ag_bilgisi()
 
+        # ── Ses Ayarla ────────────────────────
+        elif 'ses' in m and any(x in m for x in ['yap', 'ayarla', 'seviye']):
+            try:
+                seviye = int(re.search(r'\d+', m).group())
+                self.ses_seviyesi_ayarla(seviye)
+            except:
+                self.konuş("Hangi seviyeye ayarlayayım?")
+
+        # ── Parlaklık Ayarla ──────────────────
+        elif 'parlaklık' in m or 'ışık' in m:
+            try:
+                seviye = int(re.search(r'\d+', m).group())
+                self.parlaklik_ayarla(seviye)
+            except:
+                self.konuş("Parlaklık yüzde kaç olsun?")
+
+        # ── Wikipedia ─────────────────────────
+        elif any(x in m for x in ['kimdir', 'nedir', 'hakkında bilgi', 'wikipedia']):
+            sorgu = re.sub(r'kimdir|nedir|hakkında bilgi|wikipedia|\?', '', m).strip()
+            self.wikipedia_ara(sorgu)
+
+        # ── Çeviri ────────────────────────────
+        elif 'çevir' in m:
+            # "merhaba'yı ingilizceye çevir" veya "çevir: nasılsın"
+            hedef = 'en'
+            if 'almanca' in m: hedef = 'de'
+            elif 'fransızca' in m: hedef = 'fr'
+            elif 'rusça' in m: hedef = 'ru'
+            
+            metin_to_translate = m.replace('çevir', '').replace('ingilizceye', '').replace('almancaya', '').strip()
+            self.cevir(metin_to_translate, hedef)
+
+        # ── Döviz ─────────────────────────────
+        elif 'dolar' in m:
+            self.doviz_bilgisi("dolar")
+        elif 'euro' in m:
+            self.doviz_bilgisi("euro")
+        elif 'altın' in m:
+            self.doviz_bilgisi("gram altın")
+
         # ── Uygulama Aç ───────────────────────
         elif 'aç' in m or 'başlat' in m or 'çalıştır' in m:
             # "brave aç", "steam'i aç", "notepad başlat"
-            kelimeler = m.replace('ı aç', '').replace('yi aç', '').replace("'ı aç", '')
+            kelimeler = m.replace('ı aç', '').replace('yi aç', '').replace("'ı aç", '').replace('u aç', '')
             kelimeler = kelimeler.replace(' aç', '').replace(' başlat', '').replace(' çalıştır', '').strip()
             if kelimeler:
                 self.uygulama_ac(kelimeler)
@@ -598,6 +882,8 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                 if app in m:
                     self.uygulama_kapat(app)
                     break
+            else:
+                self.konuş("Hangi uygulamayı kapatmamı istersiniz?")
 
         # ── Çalışan Uygulamalar ────────────────
         elif any(x in m for x in ['hangi uygulamalar', 'çalışan uygulamalar', 'açık uygulamalar']):
@@ -658,6 +944,79 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         elif any(x in m for x in ['ekran görüntüsü', 'screenshot', 'ekran al']):
             self.ekran_goruntusu_al()
 
+        # ── Şifre Üret ───────────────────────
+        elif any(x in m for x in ['şifre üret', 'şifre oluştur', 'parola üret']):
+            try:
+                uzunluk = int(re.search(r'\d+', m).group())
+            except:
+                uzunluk = 16
+            self.sifre_uret(uzunluk)
+
+        # ── Matematik ─────────────────────────
+        elif any(x in m for x in ['hesapla', 'kaç eder', 'kaçtır', 'topla', 'çarp', 'böl']):
+            self.matematik_hesapla(m)
+
+        # ── IP Bilgisi ────────────────────────
+        elif any(x in m for x in ['ip adresim', 'ip nedir', 'ip bilgisi']):
+            self.ip_bilgisi()
+
+        # ── WiFi ──────────────────────────────
+        elif any(x in m for x in ['wifi', 'wi-fi', 'kablosuz ağ']):
+            self.wifi_bilgisi()
+
+        # ── Hız Testi ─────────────────────────
+        elif any(x in m for x in ['hız testi', 'internet hızı test', 'speed test']):
+            self.hiz_testi()
+
+        # ── Geri Sayım ────────────────────────
+        elif 'geri say' in m or 'sayaç' in m:
+            self.geri_sayim(m)
+
+        # ── Günlük Özet ──────────────────────
+        elif any(x in m for x in ['günlük özet', 'günaydın', 'günün özeti', 'brifing']):
+            self.gunluk_ozet()
+
+        # ── Dosya Bul ─────────────────────────
+        elif any(x in m for x in ['dosya bul', 'dosya ara', 'dosyayı bul']):
+            sorgu = re.sub(r'dosya bul|dosya ara|dosyayı bul', '', m).strip()
+            if sorgu:
+                self.dosya_bul(sorgu)
+            else:
+                self.konuş("Hangi dosyayı arayayım?")
+
+        # ── Özetle ────────────────────────────
+        elif 'özetle' in m:
+            metin = m.replace('özetle', '').strip()
+            if metin:
+                self.metin_ozetle(metin)
+            else:
+                self.konuş("Neyi özetleyeyim?")
+
+        # ── Kod Yaz ───────────────────────────
+        elif any(x in m for x in ['kod yaz', 'program yaz', 'script yaz']):
+            aciklama = re.sub(r'kod yaz|program yaz|script yaz', '', m).strip()
+            if aciklama:
+                self.kod_yaz(aciklama)
+            else:
+                self.konuş("Ne tür bir kod yazayım?")
+
+        # ── Klasör Oluştur ────────────────────
+        elif any(x in m for x in ['klasör oluştur', 'klasör yap', 'dosya oluştur']):
+            ad = re.sub(r'klasör oluştur|klasör yap|dosya oluştur|masaüstünde|masaüstüne', '', m).strip()
+            if ad:
+                self.klasor_olustur(ad)
+            else:
+                self.konuş("Klasör adı söyleyin.")
+
+        # ── Çöp Kutusu ───────────────────────
+        elif any(x in m for x in ['çöp kutusu', 'geri dönüşüm', 'çöplüğü boşalt']):
+            self.cop_kutusu_bosalt()
+
+        # ── Panoya Kopyala ────────────────────
+        elif 'kopyala' in m and 'pano' in m:
+            metin = m.replace('panoya kopyala', '').replace('kopyala', '').strip()
+            self.pano_kopyala(metin)
+
         # ── Bilgisayar Kapat/Yeniden Başlat ──
         elif any(x in m for x in ['bilgisayarı kapat', 'shutdown', 'kapat bilgisayarı']):
             self.bilgisayar_kapat()
@@ -689,12 +1048,17 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         # ── Yardım ───────────────────────────
         elif any(x in m for x in ['yardım', 'ne yapabilirsin', 'komutlar', 'help']):
             yardim = ("Şunları yapabilirim: "
-                      "Saat ve tarih söylerim, sistem bilgisi veririm, "
-                      "uygulama açar ve kapatırım, not alırım, "
-                      "web sitesi açarım, YouTube'da ararım, "
-                      "hava durumuna bakarım, alarm kurarım, "
-                      "Ollama modelleriyle sohbet ederim. "
-                      "Bir şeyler sormak için sadece konuşun!")
+                      "Saat, tarih ve günlük özet söylerim. "
+                      "Sistem bilgisi, pil, WiFi ve IP adresi gösteririm. "
+                      "Uygulama açar, kapatır ve dosya bulurum. "
+                      "Not alır, alarm ve geri sayım kurarım. "
+                      "Ses ve parlaklık ayarlarım. "
+                      "Wikipedia'da arar, çeviri yapar, matematik hesaplarım. "
+                      "Şifre üretir, internet hızı test eder, kod yazarım. "
+                      "Klasör oluşturur, çöp kutusunu boşaltırım. "
+                      "Döviz ve altın fiyatı söylerim. "
+                      "YouTube, Google ve web sitesi açarım. "
+                      "Ollama modelleriyle sohbet ederim.")
             self.konuş(yardim)
 
         # ── Ollama'ya Sor (varsayılan) ────────
