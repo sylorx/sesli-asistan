@@ -684,7 +684,7 @@ Date: {tarih}"""
         print(f"🔑 Şifre: {sifre}")
         try:
             # Panoya kopyala
-            subprocess.run(['clip'], input=sifre.encode('utf-8'), check=True, shell=True)
+            subprocess.run(['clip'], input=sifre.encode('utf-8'), check=True)
             self.konuş(f"{uzunluk} karakterlik şifre oluşturuldu, kopyalandı.")
             
             # Hafif gecikme ile yapıştır
@@ -707,7 +707,7 @@ Date: {tarih}"""
                 if konus: self.konuş("Şifre yazdırıldı.")
             else:
                 # Pano üzerinden dene
-                subprocess.run(['clip'], input=self.son_sifre.encode('utf-8'), check=True, shell=True)
+                subprocess.run(['clip'], input=self.son_sifre.encode('utf-8'), check=True)
                 if konus: self.konuş("Şifre panoda, yapıştırabilirsiniz.")
         except Exception as e:
             print(f"Yapıştırma hatası: {e}")
