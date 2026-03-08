@@ -147,16 +147,30 @@ class SesliAsistan:
 
         # STT - Maksimum hassasiyet ayarları
         self.recognizer = sr.Recognizer()
-        self.recognizer.energy_threshold = 150       # Sabit düşük değer = Çok hassas
+        self.recognizer.energy_threshold = 150
         self.recognizer.dynamic_energy_threshold = False
-        self.recognizer.pause_threshold = 1.6        # Cümle sonunu çok daha uzun bekle
-        self.recognizer.non_speaking_duration = 1.0  # Kelime arası sessizlik payı
+        self.recognizer.pause_threshold = 1.6
+        self.recognizer.non_speaking_duration = 1.0
 
-        # Başlangıçta bir kez ortam sesini analiz et (Sadece 1 saniye)
+        # Varsayılan mikrofonu otomatik algıla ve göster
+        self.mikrofon_index = None
         try:
-            with sr.Microphone() as m_init:
+            mic_listesi = sr.Microphone.list_microphone_names()
+            varsayilan = sr.Microphone()
+            varsayilan_idx = varsayilan.device_index if varsayilan.device_index is not None else 0
+            self.mikrofon_index = varsayilan_idx
+            print(f"🎙️ Varsayılan mikrofon: [{varsayilan_idx}] {mic_listesi[varsayilan_idx]}")
+            # Başlangıçta bir kez ortam sesini analiz et
+            with sr.Microphone(device_index=self.mikrofon_index) as m_init:
                 self.recognizer.adjust_for_ambient_noise(m_init, duration=1.0)
-        except: pass
+            print(f"🔊 Ortam sesi kalibrasyonu tamamlandı (threshold: {self.recognizer.energy_threshold})")
+        except Exception as e:
+            print(f"⚠️ Mikrofon algılama hatası: {e}")
+            # Tüm mevcut cihazları listele
+            try:
+                for i, ad in enumerate(sr.Microphone.list_microphone_names()):
+                    print(f"  [{i}] {ad}")
+            except: pass
 
         # Overlay - Thread güvenli başlatma
         self.overlay = None
@@ -231,8 +245,8 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
             except: pass
 
     def dinle(self, zaman_asimi: int = 7, tekrar: bool = True) -> str | None:
-        """Mikrofondan ses al - Optimize edilmiş hassas mod"""
-        with sr.Microphone() as kaynak:
+        """Mikrofondan ses al - Varsayılan mikrofonu kullanır"""
+        with sr.Microphone(device_index=self.mikrofon_index) as kaynak:
             if self.overlay:
                 try: self.overlay.dinliyor_modu()
                 except: pass
