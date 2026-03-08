@@ -1315,21 +1315,11 @@ Date: {tarih}"""
         return True
 
     # ══════════════════════════════════════════
-    #  ANA DÖNGÜ
+    #  ANA DÖNGÜ (Wake Word & Sürekli Dinleme)
     # ══════════════════════════════════════════
 
     def calistir(self):
-        """Ana asistan döngüsü"""
-        print("\n" + "═"*60)
-        print("  Konuşmaya başlayın. 'Çıkış' demek için: 'çıkış' deyin")
-        print("═"*60 + "\n")
-
-    # ══════════════════════════════════════════
-    #  ANA DÖNGÜ (Wake Word Desteği ile)
-    # ══════════════════════════════════════════
-
-    def calistir(self):
-        """Asistanı uyandırma kelimesi ile çalıştır"""
+        """Asistanı uyandırma kelimesi ile çalıştır ve devamlı dinle"""
         print("\n" + "═"*60)
         print(f"  {ASISTAN_ADI} Uyku Modunda... ('Aria' veya 'Arya' diyerek uyandırın)")
         print("═"*60 + "\n")
@@ -1338,29 +1328,50 @@ Date: {tarih}"""
 
         while True:
             try:
-                # 1. Aşama: Uyandırma Kelimesini Dinle
-                metin = self.dinle(zaman_asimi=None) # Pasif dinleme
+                # 1. Aşama: Uyandırma Kelimesini Dinle (Pasif)
+                metin = self.dinle(zaman_asimi=None)
                 
                 if metin:
-                    # Uyandırma kelimesi kontrolü
                     uyandi = False
+                    ilk_komut = None
                     for kelime in uyandirma_kelimeleri:
-                        if kelime in metin:
+                        if kelime in metin.lower():
                             uyandi = True
+                            # "Arya şifre oluştur" şeklinde tek seferde söylendiyse yakala
+                            parcalar = metin.lower().split(kelime, 1)
+                            if len(parcalar) > 1 and parcalar[1].strip():
+                                ilk_komut = parcalar[1].strip()
                             break
                     
                     if uyandi:
-                        # UYANDI!
-                        self.konuş("Evet, dinliyorum?")
+                        devam_etsin_mi = True
+                        islem_yapildi_mi = False
                         
-                        # 2. Aşama: Komut Dinle
-                        komut = self.dinle(zaman_asimi=7)
-                        if komut:
-                            devam = self.komut_isle(komut)
-                            if not devam:
-                                break
+                        # Eğer uyandırma kelimesinin yanında komut da verildiyse hemen işle
+                        if ilk_komut:
+                            devam_etsin_mi = self.komut_isle(ilk_komut)
+                            islem_yapildi_mi = True
                         else:
-                            self.konuş("Sizi duyamadım, tekrar uyku moduna geçiyorum.")
+                            self.konuş("Evet, dinliyorum?")
+                            
+                        # Uyanık kaldığı sürece peş peşe komut dinlemeye devam et
+                        while devam_etsin_mi:
+                            komut = self.dinle(zaman_asimi=7)
+                            if komut:
+                                # İşi bitince elle uyutmak için
+                                if any(x in komut.lower() for x in ['teşekkür', 'uyku moduna geç', 'sağol', 'yeterli', 'bu kadar', 'uyu']):
+                                    self.konuş("Rica ederim. Uyku moduna dönüyorum.")
+                                    break
+                                
+                                devam_etsin_mi = self.komut_isle(komut)
+                                islem_yapildi_mi = True
+                                if not devam_etsin_mi: return # Programı komple kapat ("çıkış" komutu)
+                            else:
+                                # Ses gelmezse veya zaman aşımında sessizce uykuya dön
+                                if not islem_yapildi_mi:
+                                    self.konuş("Sizi duyamadım, uyku moduna geçiyorum.")
+                                print("🌙 Asistan uyku moduna döndü.")
+                                break
                     
                 time.sleep(0.1)
             except KeyboardInterrupt:
@@ -1369,7 +1380,6 @@ Date: {tarih}"""
             except Exception as e:
                 print(f"Hata: {e}")
                 time.sleep(1)
-
 
 # ══════════════════════════════════════════
 #  BAŞLATICI
