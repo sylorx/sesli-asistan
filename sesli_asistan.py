@@ -170,8 +170,8 @@ class SesliAsistan:
         self.recognizer = sr.Recognizer()
         self.recognizer.energy_threshold = 150
         self.recognizer.dynamic_energy_threshold = False
-        self.recognizer.pause_threshold = 0.8
-        self.recognizer.non_speaking_duration = 0.5
+        self.recognizer.pause_threshold = 0.5
+        self.recognizer.non_speaking_duration = 0.4
 
         # Varsayılan mikrofonu otomatik algıla ve göster
         self.mikrofon_index = None
@@ -267,14 +267,16 @@ class SesliAsistan:
         """Dile göre sistem promptunu güncelle"""
         tarih = datetime.datetime.now().strftime('%d %B %Y, %H:%M')
         if self.dil == "tr":
-            self.sistem_promptu = f"""Sen {ASISTAN_ADI} adlı Türkçe konuşan bir sesli asistansın.
-Kullanıcının bilgisayarını yönetmesine yardımcı oluyorsun.
-Cevaplarını kısa, net ve Türkçe ver. Sadece düz metin yaz (emoji/markdown kullanma).
+            self.sistem_promptu = f"""Senin adın {ASISTAN_ADI}. Sen akıllı ve nazik bir yapay zeka asistanısın.
+Geçmiş konuşmaları (sohbet bağlamını) DİKKATE AL. Sana "anlamı nedir" diye sorulduğunda bir önceki konuştuğumuz kelimenin anlamını söyle.
+Lütfen cevaplarını çok kısa, net ve öz tut. Gereksiz uzatmalardan kaçın.
+Cevapların doğrudan sorunun yanıtı olsun. Sadece düz metin yaz (emoji veya markdown kullanma).
 Tarih: {tarih}"""
         else:
-            self.sistem_promptu = f"""You are {ASISTAN_ADI}, an English speaking AI assistant.
-You help the user manage their Windows computer.
-Keep answers short, clear, and in English. Use only plain text (no emojis/markdown).
+            self.sistem_promptu = f"""Your name is {ASISTAN_ADI}. You are a smart and polite AI assistant.
+REMEMBER the conversation context. If asked "what does it mean", explain the word we just talked about.
+Keep your answers very short, concise, and straight to the point.
+Answer directly without unnecessary fluff. Use only plain text (no emojis or markdown).
 Date: {tarih}"""
 
     def dil_degistir(self, yeni_dil: str):
@@ -345,7 +347,7 @@ Date: {tarih}"""
                 if self.overlay:
                     try: self.overlay.bekleme_modu()
                     except: pass
-                return None
+                return "" # Sesi duydu ama anlamadıysa None dönme, boş metin dön ki uyumasın
             except sr.RequestError as e:
                 print(f"❌ Google STT hatası: {e}")
                 if self.overlay:
@@ -403,7 +405,11 @@ Date: {tarih}"""
         payload = {
             "model": aktif_model,
             "messages": [{"role": "system", "content": sistem}] + self.sohbet_gecmisi,
-            "stream": False
+            "stream": False,
+            "options": {
+                "num_predict": 100,  # En fazla 100 token - aşırı hızlı yanıt için
+                "num_ctx": 2048      # Bellek/Bağlam boyutunu sınırlamak işlemci yükünü çok hafifletir
+            }
         }
 
         try:
@@ -1288,6 +1294,21 @@ Date: {tarih}"""
             self.sohbet_gecmisi = []
             self.konuş("Sohbet geçmişi temizlendi.")
 
+        # ── Hızlı Sohbet / İltifat Filtresi ───────
+        elif metin in ['harika', 'güzel', 'süper', 'mükemmel', 'çok iyi', 'efsane']:
+            import random
+            cevap = random.choice(["Teşekkür ederim!", "Beğenmenize sevindim.", "Her zaman hizmetinizdeyim.", "O sizin harikalığınız!"])
+            self.konuş(cevap)
+            return True
+            
+        elif metin in ['teşekkürler', 'teşekkür ederim', 'sağol', 'sağ ol', 'eyvallah']:
+            self.konuş("Rica ederim. Yardımcı olabildiysem ne mutlu bana.")
+            return True
+            
+        elif metin in ['nasılsın', 'naber', 'ne haber', 'durumlar nasıl']:
+            self.konuş("Ben bir yapay zekayım, sizin talimatlarınızı bekliyorum. Siz nasılsınız?")
+            return True
+
         # ── Yardım ───────────────────────────
         elif any(x in m for x in ['yardım', 'ne yapabilirsin', 'komutlar', 'help']):
             yardim = ("Şunları yapabilirim: "
@@ -1356,7 +1377,7 @@ Date: {tarih}"""
                             
                         # Uyanık kaldığı sürece peş peşe komut dinlemeye devam et
                         while devam_etsin_mi:
-                            komut = self.dinle(zaman_asimi=7)
+                            komut = self.dinle(zaman_asimi=10) # 10 saniye bekle
                             if komut:
                                 # İşi bitince elle uyutmak için
                                 if any(x in komut.lower() for x in ['teşekkür', 'uyku moduna geç', 'sağol', 'yeterli', 'bu kadar', 'uyu']):
@@ -1366,8 +1387,11 @@ Date: {tarih}"""
                                 devam_etsin_mi = self.komut_isle(komut)
                                 islem_yapildi_mi = True
                                 if not devam_etsin_mi: return # Programı komple kapat ("çıkış" komutu)
+                            elif komut == "":
+                                # Gürültü/Anlaşılamadı durumu: Uyuma, dinlemeye devam et
+                                continue
                             else:
-                                # Ses gelmezse veya zaman aşımında sessizce uykuya dön
+                                # Ses gelmezse veya tam zaman aşımında sessizce uykuya dön (None geldiğinde)
                                 if not islem_yapildi_mi:
                                     self.konuş("Sizi duyamadım, uyku moduna geçiyorum.")
                                 print("🌙 Asistan uyku moduna döndü.")
