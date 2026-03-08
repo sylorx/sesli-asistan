@@ -94,13 +94,30 @@ class SesOverlay:
     def toggle_mini(self, event=None):
         self.mini_mod = not self.mini_mod
         if self.mini_mod:
-            self.root.geometry(f"{160}x{80}")
-            self.canvas.config(width=160, height=80)
+            self.root.geometry(f"{160}x{40}")
+            self.canvas.config(width=160, height=40)
         else:
-            self.root.geometry(f"{240}x{140}")
-            self.canvas.config(width=240, height=140)
+            self.root.geometry(f"{200}x{60}")
+            self.canvas.config(width=200, height=60)
+    # --- GENEL API ---
+    def dinliyor_modu(self): self.mod = "dinliyor"; self.faz_hiz = 0.2
+    def konusuyor_modu(self): self.mod = "konuşuyor"; self.faz_hiz = 0.3
+    def bekleme_modu(self, son_komut=None):
+        self.mod = "bekleme"; self.faz_hiz = 0.05
+        if son_komut: self.son_komut = son_komut
 
-    # --- UI ÇİZİM ---
+    def gorev_modu(self, metin, renk="#ff9800"):
+        """Örn: Program açarken sarı renkte 'AÇILIYOR' yazar"""
+        self.mod = "gorev"
+        self.gorev_metni = metin
+        self.gorev_renk = renk
+        self.faz_hiz = 0.4
+        # 2.5 saniye sonra bekleme moduna dön
+        threading.Timer(2.5, self.bekleme_modu).start()
+
+    def kapat(self):
+        self.calisiyor = False
+        self.root.quit()
     def _panel_hazirla(self):
         """Metin ve temel UI elemanları"""
         self.canvas.delete("ui")
@@ -119,77 +136,34 @@ class SesOverlay:
         w, h = (160, 40) if self.mini_mod else (200, 60)
         cx, cy = w // 2, h // 2
         
-        # 0. Arka Plan Parlaması (Aura)
-        if self.mod != "bekleme":
-            aura_r = 22 if self.mini_mod else 28
-            aura_color = self.renkler[self.mod]["ana"]
-            # Birkaç katmanlı şeffaf daire ile glow efekti
-            for r_off in [5, 10, 15]:
-                self.canvas.create_oval(
-                    cx-(aura_r+r_off), cy-(aura_r+r_off), 
-                    cx+(aura_r+r_off), cy+(aura_r+r_off),
-                    outline="", fill=aura_color, stipple="gray12", tags="aura"
-                )
+        # Moda göre ayarlar
+        if self.mod == "dinliyor":
+            renk = self.renkler["dinliyor"]["ana"]
+            h_mult = 10; radius = 17; n_bars = 36
+        elif self.mod == "konuşuyor":
+            renk = self.renkler["konuşuyor"]["ana"]
+            h_mult = 14; radius = 17; n_bars = 36
+        elif self.mod == "gorev":
+            renk = self.gorev_renk
+            h_mult = 18; radius = 17; n_bars = 40
+        else: # bekleme
+            renk = self.renkler["bekleme"]["ana"]
+            h_mult = 3; radius = 17; n_bars = 30
 
-        # 1. Renk Fade Efekti
-        hedef_renk = self.renkler[self.mod]["ana"]
-        self.mevcut_ana_renk = self._renk_fade(self.mevcut_ana_renk, hedef_renk)
-        
-        # 2. Dairesel Ses Dalgası (Neon & Gradient)
-        n_bars = 40
-        radius = 12 if self.mini_mod else 17
+        # Renk Fade
+        self.mevcut_ana_renk = self._renk_fade(self.mevcut_ana_renk, renk)
         
         for i in range(n_bars):
             aci = math.radians((i / n_bars) * 360)
-            
-            # Dalga yüksekliği matematiği
-            if self.mod == "dinliyor":
-                # Neon Yeşil Akış
-                v = math.sin(self.faz*2.5 + i*0.6) * 9 + random.random()*4
-                hue = 140 + math.sin(self.faz + i*0.1)*20 # Yeşil tonları arası geçiş
-            elif self.mod == "konuşuyor":
-                # Neon Mor/Magenta Akış
-                v = math.sin(self.faz*3.8 + i*0.8) * 13 + random.random()*5
-                hue = 280 + math.sin(self.faz*1.5 + i*0.2)*30 # Mor tonları arası geçiş
-            else:
-                v = math.sin(self.faz*0.6 + i*0.4) * 2
-                hue = 220 # Sabit Mavi
-            
-            v = max(1.5, abs(v))
-            bar_color = self._hsl_to_hex(hue, 100, 60)
-            bar_parlak = self._hsl_to_hex(hue, 100, 80) # Uçlar daha parlak
+            v = math.sin(self.faz * (3 if self.mod == "gorev" else 2) + i * 0.6) * h_mult + random.random() * 2
+            v = max(1.2, abs(v))
             
             x1 = cx + math.cos(aci) * radius
             y1 = cy + math.sin(aci) * radius
             x2 = cx + math.cos(aci) * (radius + v)
             y2 = cy + math.sin(aci) * (radius + v)
             
-            # Gradyan efekti için iki parça çiziyoruz (İç koyu, uç parlak)
-            mid_x = x1 + (x2 - x1) * 0.6
-            mid_y = y1 + (y2 - y1) * 0.6
-            
-            self.canvas.create_line(x1, y1, mid_x, mid_y, fill=bar_color, width=2, capstyle="round", tags="dalga")
-            self.canvas.create_line(mid_x, mid_y, x2, y2, fill=bar_parlak, width=3, capstyle="round", tags="dalga")
-            
-            # 3. Partikülleri Barların Ucundan Fırlat
-            if (self.mod != "bekleme" or random.random() > 0.985) and i % 5 == 0:
-                if len(self.partikuller) < 30:
-                    self.partikuller.append({
-                        "x": x2, "y": y2, 
-                        "vx": math.cos(aci) * (0.5 + random.random()), 
-                        "vy": math.sin(aci) * (0.5 + random.random()),
-                        "life": 1.0, "color": bar_parlak
-                    })
-        
-        for p in self.partikuller[:]:
-            p["x"] += p["vx"]
-            p["y"] += p["vy"]
-            p["life"] -= 0.08
-            if p["life"] <= 0:
-                self.partikuller.remove(p)
-            else:
-                s = int(2 * p["life"])
-                self.canvas.create_oval(p["x"]-s, p["y"]-s, p["x"]+s, p["y"]+s, fill=p["color"], outline="", tags="part")
+            self.canvas.create_line(x1, y1, x2, y2, fill=self.mevcut_ana_renk, width=2, capstyle="round", tags="dalga")
 
         self._bilgi_ciz(cx, cy, w, h)
 
@@ -220,12 +194,16 @@ class SesOverlay:
         self.canvas.create_text(w-2, 2, text=simdi, fill="#444", font=("Arial", 6), anchor="ne", tags="dalga")
         
         # 1. DURUM YAZISI (DAİRE İÇİ)
-        txt = "DİNLE" if self.mod == "dinliyor" else "ARIA" if self.mod == "konuşuyor" else ""
+        txt = ""
+        if self.mod == "dinliyor": txt = "DİNLE"
+        elif self.mod == "konuşuyor": txt = "ARIA"
+        elif self.mod == "gorev": txt = self.gorev_metni
+
         if txt:
             self.canvas.create_text(cx, cy, text=txt, fill="white", font=("Arial", 5, "bold"), tags="dalga")
         
-        # 2. SON KOMUT (ÜST ORTA)
-        if self.son_komut:
+        # 2. SON KOMUT
+        if self.son_komut and self.mod != "gorev":
             kisa = self.son_komut[:24].upper() + (".." if len(self.son_komut) > 24 else "")
             self.canvas.create_text(cx, 6, text=kisa, fill="#555", font=("Arial", 5, "italic"), tags="dalga")
 

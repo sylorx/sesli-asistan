@@ -408,6 +408,9 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                         return False
 
                 try:
+                    if self.overlay and hasattr(self.overlay, 'gorev_modu'):
+                        self.overlay.gorev_modu("AÇILIYOR", "#00e5ff") # Turkuaz
+                        
                     if yol.startswith('ms-'):
                         os.startfile(yol)
                     elif os.path.exists(yol):
@@ -442,6 +445,8 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                 except Exception:
                     pass
         if kapatildi:
+            if self.overlay and hasattr(self.overlay, 'gorev_modu'):
+                self.overlay.gorev_modu("KAPATILDI", "#ff1744") # Kırmızı
             self.konuş(f"{isim} kapatıldı.")
         else:
             self.konuş(f"{isim} çalışmıyor.")
@@ -1085,6 +1090,9 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                 uzunluk = int(sayi_match.group()) if sayi_match else 16
             except:
                 uzunluk = 16
+                
+            if self.overlay and hasattr(self.overlay, 'gorev_modu'):
+                self.overlay.gorev_modu("ÜRETİLDİ", "#ffea00") # Sarı/Altın
             self.sifre_uret(uzunluk)
 
         # ── Matematik ─────────────────────────
