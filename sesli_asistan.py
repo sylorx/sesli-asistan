@@ -26,6 +26,17 @@ import time
 import threading
 import re
 import glob
+import io
+
+# --- KODLAMA DÜZELTME (Türkçe Karakter Sorunu İçin) ---
+if sys.stdout.encoding != 'utf-8':
+    try:
+        sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+        sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    except:
+        pass
+# ----------------------------------------------------
+
 from pathlib import Path
 from ctypes import cast, POINTER
 from comtypes import CLSCTX_ALL
@@ -165,12 +176,21 @@ class SesliAsistan:
         # Varsayılan mikrofonu otomatik algıla ve göster
         self.mikrofon_index = None
         try:
-            mic_listesi = sr.Microphone.list_microphone_names()
             varsayilan = sr.Microphone()
-            varsayilan_idx = varsayilan.device_index if varsayilan.device_index is not None else 0
-            self.mikrofon_index = varsayilan_idx
-            print(f"🎙️ Varsayılan mikrofon: [{varsayilan_idx}] {mic_listesi[varsayilan_idx]}")
-            # Başlangıçta bir kez ortam sesini analiz et
+            self.mikrofon_index = varsayilan.device_index if varsayilan.device_index is not None else 0
+            mic_listesi = sr.Microphone.list_microphone_names()
+            
+            # Mikrofon ismindeki bozuk karakterleri temizle
+            mic_adi = mic_listesi[self.mikrofon_index]
+            try:
+                mic_adi = mic_adi.encode('cp1252').decode('utf-8')
+            except:
+                try:
+                    mic_adi = mic_adi.encode('utf-8').decode('utf-8')
+                except:
+                    pass
+
+            print(f"🎙️ Varsayılan mikrofon: [{self.mikrofon_index}] {mic_adi}")
             with sr.Microphone(device_index=self.mikrofon_index) as m_init:
                 self.recognizer.adjust_for_ambient_noise(m_init, duration=1.0)
             print(f"🔊 Ortam sesi kalibrasyonu tamamlandı (threshold: {self.recognizer.energy_threshold})")
