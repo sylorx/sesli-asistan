@@ -1,60 +1,104 @@
 """
 Aria - Transparan Ses Dalgası Overlay
-Küçük, şeffaf, nefes alabilen ses dalgası animasyonu
+Küçük, şeffaf, sürüklenebilir, konum kaydeden ses dalgası animasyonu
 """
 
 import tkinter as tk
 import math
 import threading
 import time
+import json
+import os
+
+KONUM_DOSYA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overlay_konum.json")
+
 
 class SesOverlay:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("")
 
-        # Pencere boyutu ve konumu (sağ alt köşe)
-        genislik  = 200
-        yukseklik = 60
-        ekran_g   = self.root.winfo_screenwidth()
-        ekran_y   = self.root.winfo_screenheight()
-        x = ekran_g - genislik - 20
-        y = ekran_y - yukseklik - 50
-        self.root.geometry(f"{genislik}x{yukseklik}+{x}+{y}")
+        # Pencere boyutu
+        self.genislik = 200
+        self.yukseklik = 60
+
+        # Kaydedilmiş konumu yükle veya varsayılan kullan
+        x, y = self._konum_yukle()
+
+        self.root.geometry(f"{self.genislik}x{self.yukseklik}+{x}+{y}")
 
         # Şeffaf pencere
-        self.root.overrideredirect(True)          # Başlık çubuğu yok
-        self.root.attributes("-topmost", True)    # Her zaman üstte
-        self.root.attributes("-alpha", 0.85)      # %85 görünür
+        self.root.overrideredirect(True)
+        self.root.attributes("-topmost", True)
+        self.root.attributes("-alpha", 0.85)
         self.root.configure(bg="#0a0a0a")
 
         # Canvas
         self.canvas = tk.Canvas(
-            self.root, width=genislik, height=yukseklik,
+            self.root, width=self.genislik, height=self.yukseklik,
             bg="#0a0a0a", highlightthickness=0
         )
         self.canvas.pack()
 
         # Durum
-        self.mod   = "bekleme"   # "bekleme" | "dinliyor" | "konuşuyor"
-        self.faz   = 0.0
+        self.mod = "bekleme"
+        self.faz = 0.0
         self.calisiyor = True
 
-        # Arka plan yuvarlak köşe (hafif panel)
+        # Sürükleme değişkenleri
+        self._surukleme_x = 0
+        self._surukleme_y = 0
+
+        # Mouse olayları (sürükleme için)
+        self.canvas.bind("<ButtonPress-1>", self._surukleme_basla)
+        self.canvas.bind("<B1-Motion>", self._surukle)
+        self.canvas.bind("<ButtonRelease-1>", self._surukleme_bitir)
+
+        # Arka plan
         self._panel_ciz()
 
-        # Animasyon döngüsü (ayrı thread)
-        self.anim_thread = threading.Thread(target=self._anim_dongu, daemon=True)
-        self.anim_thread.start()
+        # Animasyon (root.after ile - thread güvenli)
+        self._animasyonu_baslat()
 
-    def _panel_ciz(self):
-        """Yuvarlak köşeli arka plan"""
-        self.canvas.create_rectangle(
-            4, 4, 196, 56,
-            fill="#111111", outline="#222222", width=1
-        )
+    # ── Konum Kaydetme / Yükleme ──────────────────
+    def _konum_yukle(self):
+        """Son kaydedilen konumu yükle"""
+        try:
+            if os.path.exists(KONUM_DOSYA):
+                with open(KONUM_DOSYA, 'r') as f:
+                    data = json.load(f)
+                    return data.get('x', None), data.get('y', None)
+        except:
+            pass
+        # Varsayılan: sağ alt köşe
+        ekran_g = self.root.winfo_screenwidth()
+        ekran_y = self.root.winfo_screenheight()
+        return ekran_g - self.genislik - 20, ekran_y - self.yukseklik - 80
 
-    # ── Genel API ────────────────────────────────────
+    def _konum_kaydet(self):
+        """Mevcut pencere konumunu kaydet"""
+        try:
+            x = self.root.winfo_x()
+            y = self.root.winfo_y()
+            with open(KONUM_DOSYA, 'w') as f:
+                json.dump({'x': x, 'y': y}, f)
+        except:
+            pass
+
+    # ── Sürükleme ─────────────────────────────────
+    def _surukleme_basla(self, event):
+        self._surukleme_x = event.x
+        self._surukleme_y = event.y
+
+    def _surukle(self, event):
+        x = self.root.winfo_x() + (event.x - self._surukleme_x)
+        y = self.root.winfo_y() + (event.y - self._surukleme_y)
+        self.root.geometry(f"+{x}+{y}")
+
+    def _surukleme_bitir(self, event):
+        self._konum_kaydet()
+
+    # ── Genel API ─────────────────────────────────
     def dinliyor_modu(self):
         self.mod = "dinliyor"
 
@@ -69,17 +113,22 @@ class SesOverlay:
         try:
             self.root.quit()
             self.root.destroy()
-        except: pass
+        except:
+            pass
 
-    # ── Animasyon ────────────────────────────────────
-    def _anim_dongu(self):
-        fps_sure = 1 / 30
-        while self.calisiyor:
+    # ── Panel ─────────────────────────────────────
+    def _panel_ciz(self):
+        self.canvas.create_rectangle(
+            4, 4, 196, 56,
+            fill="#111111", outline="#222222", width=1
+        )
+
+    # ── Animasyon (root.after kullanarak - thread güvenli) ──
+    def _animasyonu_baslat(self):
+        if self.calisiyor:
+            self._ciz()
             self.faz += 0.18
-            try:
-                self.root.after(0, self._ciz)
-            except: break
-            time.sleep(fps_sure)
+            self.root.after(33, self._animasyonu_baslat)  # ~30 FPS
 
     def _ciz(self):
         try:
@@ -87,14 +136,13 @@ class SesOverlay:
             self._panel_ciz()
 
             cx, cy = 100, 30
-            n_bar  = 18
-            bar_w  = 5
-            gap    = 3
+            n_bar = 18
+            bar_w = 5
+            gap = 3
             toplam_gen = n_bar * (bar_w + gap) - gap
             baslangic_x = cx - toplam_gen // 2
 
             if self.mod == "bekleme":
-                # Çok kısık, yavaş nefes efekti
                 renk = "#334466"
                 for i in range(n_bar):
                     x = baslangic_x + i * (bar_w + gap)
@@ -102,7 +150,6 @@ class SesOverlay:
                     self._bar_ciz(x, cy, bar_w, yuk, renk)
 
             elif self.mod == "dinliyor":
-                # Yeşil, orta aktif dalga
                 renk = "#00e676"
                 parlak = "#69ff9e"
                 for i in range(n_bar):
@@ -114,7 +161,6 @@ class SesOverlay:
                     self._bar_ciz(x, cy, bar_w, yuk, r)
 
             elif self.mod == "konuşuyor":
-                # Mor/mavi, hızlı ve yüksek dalga
                 renk = "#7c4dff"
                 parlak = "#b47eff"
                 for i in range(n_bar):
@@ -131,7 +177,6 @@ class SesOverlay:
     def _bar_ciz(self, x, cy, genislik, yukseklik, renk):
         y1 = cy - yukseklik / 2
         y2 = cy + yukseklik / 2
-        r  = min(genislik // 2, 3)
         self.canvas.create_rectangle(
             x, y1, x + genislik, y2,
             fill=renk, outline="", tags="dalga"
@@ -141,17 +186,23 @@ class SesOverlay:
         self.root.mainloop()
 
 
-# Test çalıştırması
+# ── Test Çalıştırması ─────────────────────────
 if __name__ == "__main__":
     overlay = SesOverlay()
+
     def demo():
-        time.sleep(1)
-        overlay.dinliyor_modu()
-        time.sleep(3)
-        overlay.konusuyor_modu()
-        time.sleep(3)
-        overlay.bekleme_modu()
+        """Modları 3'er saniye göster, sonra bekleme modunda kal"""
         time.sleep(2)
-        overlay.kapat()
+        print("🟢 Dinliyor modu...")
+        overlay.dinliyor_modu()
+        time.sleep(4)
+        print("🟣 Konuşuyor modu...")
+        overlay.konusuyor_modu()
+        time.sleep(4)
+        print("🔵 Bekleme modu... (Pencereyi istediğin yere sürükle!)")
+        overlay.bekleme_modu()
+        # Artık kapanmıyor, bekleme modunda çalışmaya devam eder
+        # Kapatmak için terminalde Ctrl+C
+
     threading.Thread(target=demo, daemon=True).start()
     overlay.baslat()
