@@ -196,23 +196,25 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         """Mikrofondan ses al"""
         with sr.Microphone() as kaynak:
             print("🎤 Dinliyorum...")
-            self.recognizer.adjust_for_ambient_noise(kaynak, duration=0.5)
+            # Hassasiyeti biraz artıralım
+            self.recognizer.energy_threshold = 400 
+            self.recognizer.adjust_for_ambient_noise(kaynak, duration=0.8)
             try:
                 ses = self.recognizer.listen(kaynak, timeout=zaman_asimi, phrase_time_limit=30)
-                print("⚙️  İşleniyor...")
+                print("⚙️ İşleniyor...")
                 metin = self.recognizer.recognize_google(ses, language='tr-TR')
                 print(f"👤 Sen: {metin}")
                 return metin.lower()
             except sr.WaitTimeoutError:
-                if tekrar:
-                    print("⏱️  Ses algılanmadı.")
                 return None
             except sr.UnknownValueError:
                 print("❓ Anlaşılamadı.")
+                # Her seferinde konuşup rahatsız etmesin ama kullanıcı bilsin
+                # self.konuş("Anlayamadım, tekrar eder misiniz?") 
                 return None
             except sr.RequestError as e:
                 print(f"❌ Google STT hatası: {e}")
-                self.konuş("İnternet bağlantısı yok, offline moda geçiyorum.")
+                self.konuş("İnternet bağlantısı sorunu var.")
                 return None
 
     # ══════════════════════════════════════════
@@ -220,21 +222,33 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
     # ══════════════════════════════════════════
 
     def _ollama_kontrol(self):
-        """Ollama bağlantısını kontrol et"""
+        """Ollama bağlantısını kontrol et ve en iyi modeli seç"""
         try:
             r = requests.get("http://localhost:11434/api/tags", timeout=3)
             if r.status_code == 200:
                 data = r.json()
-                self.mevcut_ollama_modeller = [m['name'].split(':')[0] for m in data.get('models', [])]
+                self.mevcut_ollama_modeller = [m['name'] for m in data.get('models', [])]
                 print(f"✅ Ollama bağlı. Modeller: {', '.join(self.mevcut_ollama_modeller)}")
+                
                 if self.mevcut_ollama_modeller:
-                    self.model = self.mevcut_ollama_modeller[0]
+                    # Akıllı model seçimi: llama, mistral veya gemma varsa onları tercih et
+                    oncelikli = ["llama3", "llama2", "mistral", "gemma", "phi3"]
+                    secilen = None
+                    
+                    for p in oncelikli:
+                        for m in self.mevcut_ollama_modeller:
+                            if p in m.lower():
+                                secilen = m
+                                break
+                        if secilen: break
+                    
+                    self.model = secilen if secilen else self.mevcut_ollama_modeller[0]
                     self.konuş(f"Ollama bağlantısı kuruldu. Aktif model: {self.model}")
                 else:
-                    self.konuş("Ollama bağlı ama hiç model yüklü değil. ollama pull llama3 komutunu çalıştırın.")
+                    self.konuş("Ollama bağlı ama hiç model yüklü değil.")
         except Exception:
-            print("⚠️  Ollama bağlantısı yok.")
-            self.konuş("Ollama şu an çalışmıyor. Sistem komutlarını kullanabilirsiniz.")
+            print("⚠️ Ollama bağlantısı yok.")
+            self.konuş("Ollama şu an çalışmıyor.")
 
     def ollama_sor(self, soru: str, sistem: str = None) -> str:
         """Ollama'ya soru sor (streaming destekli)"""
