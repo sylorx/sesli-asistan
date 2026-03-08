@@ -196,9 +196,10 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         """Mikrofondan ses al"""
         with sr.Microphone() as kaynak:
             print("🎤 Dinliyorum...")
-            # Hassasiyeti biraz artıralım
-            self.recognizer.energy_threshold = 400 
-            self.recognizer.adjust_for_ambient_noise(kaynak, duration=0.8)
+            # Hassasiyeti daha da artıralım (Threshold düştükçe daha hassas olur)
+            self.recognizer.energy_threshold = 300 
+            self.recognizer.dynamic_energy_threshold = True
+            self.recognizer.adjust_for_ambient_noise(kaynak, duration=1.0)
             try:
                 ses = self.recognizer.listen(kaynak, timeout=zaman_asimi, phrase_time_limit=30)
                 print("⚙️ İşleniyor...")
@@ -250,39 +251,38 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
             print("⚠️ Ollama bağlantısı yok.")
             self.konuş("Ollama şu an çalışmıyor.")
 
-    def ollama_sor(self, soru: str, sistem: str = None) -> str:
-        """Ollama'ya soru sor (streaming destekli)"""
+    def ollama_sor(self, soru: str, sistem: str = None, ozel_model: str = None) -> str:
+        """Ollama'ya soru sor"""
         if not sistem:
             sistem = self.sistem_promptu
 
+        aktif_model = ozel_model if ozel_model else self.model
+        
+        # Modeli doğrula
+        if self.mevcut_ollama_modeller and aktif_model not in self.mevcut_ollama_modeller:
+            aktif_model = self.model
+
         self.sohbet_gecmisi.append({"role": "user", "content": soru})
 
-        # Modeli doğrula (404 almamak için)
-        if self.model and self.mevcut_ollama_modeller:
-            if self.model not in self.mevcut_ollama_modeller:
-                 # En yakın modeli seç
-                 self.model = self.mevcut_ollama_modeller[0]
-
         payload = {
-            "model": self.model,
+            "model": aktif_model,
             "messages": [{"role": "system", "content": sistem}] + self.sohbet_gecmisi,
             "stream": False
         }
 
         try:
-            print(f"🤖 {self.model} düşünüyor...")
+            print(f"🤖 {aktif_model} düşünüyor...")
             r = requests.post(OLLAMA_CHAT_URL, json=payload, timeout=60)
             if r.status_code == 200:
                 cevap = r.json()['message']['content']
                 self.sohbet_gecmisi.append({"role": "assistant", "content": cevap})
-                # Geçmişi 20 mesajla sınırla
                 if len(self.sohbet_gecmisi) > 20:
                     self.sohbet_gecmisi = self.sohbet_gecmisi[-20:]
                 return cevap
             elif r.status_code == 404:
-                return f"Hata 404: {self.model} modeli Ollama'da bulunamadı. Lütfen 'ollama pull {self.model}' komutunu çalıştırın."
+                return f"Hata 404: {aktif_model} bulunamadı."
             else:
-                return f"Ollama hata kodu: {r.status_code}. Detay: {r.text}"
+                return f"Ollama hata kodu: {r.status_code}"
         except requests.exceptions.ConnectionError:
             return "Ollama'ya bağlanılamıyor. Lütfen Ollama'nın çalıştığından emin olun."
         except Exception as e:
@@ -454,7 +454,7 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
             self.konuş(f"{sorgu} hakkında bilgi bulamadım.")
 
     def cevir(self, metin: str, hedef: str = 'en'):
-        """Ollama kullanarak çevir"""
+        """Ollama kullanarak çevir (translategemma öncelikli)"""
         if not self.mevcut_ollama_modeller:
             self.konuş("Çeviri için Ollama yüklü olmalı.")
             return
@@ -465,9 +465,18 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
             elif hedef == 'fr': dil_adi = 'Fransızca'
             elif hedef == 'ru': dil_adi = 'Rusça'
             
+            # Çeviri için özel model seçimi
+            ceviri_modeli = self.model
+            for m in self.mevcut_ollama_modeller:
+                if 'translategemma' in m.lower():
+                    ceviri_modeli = m
+                    break
+            
             prompt = f"Şu metni sadece {dil_adi} diline çevir, açıklama yapma, sadece metni ver: {metin}"
-            print(f"🌍 Çevriliyor: {metin} -> {dil_adi}")
-            sonuc = self.ollama_sor(prompt, sistem="Sen profesyonel bir çevirmensin. Sadece istenen dildeki karşılığını ver.")
+            print(f"🌍 Çevriliyor ({ceviri_modeli}): {metin} -> {dil_adi}")
+            sonuc = self.ollama_sor(prompt, 
+                                   sistem="Sen profesyonel bir çevirmensin. Sadece istenen dildeki karşılığını ver.",
+                                   ozel_model=ceviri_modeli)
             self.konuş(f"Çevirisi şöyle: {sonuc}")
         except Exception:
             self.konuş("Çeviri yapılamadı.")
