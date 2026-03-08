@@ -243,6 +243,12 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
 
         self.sohbet_gecmisi.append({"role": "user", "content": soru})
 
+        # Modeli doğrula (404 almamak için)
+        if self.model and self.mevcut_ollama_modeller:
+            if self.model not in self.mevcut_ollama_modeller:
+                 # En yakın modeli seç
+                 self.model = self.mevcut_ollama_modeller[0]
+
         payload = {
             "model": self.model,
             "messages": [{"role": "system", "content": sistem}] + self.sohbet_gecmisi,
@@ -259,8 +265,10 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                 if len(self.sohbet_gecmisi) > 20:
                     self.sohbet_gecmisi = self.sohbet_gecmisi[-20:]
                 return cevap
+            elif r.status_code == 404:
+                return f"Hata 404: {self.model} modeli Ollama'da bulunamadı. Lütfen 'ollama pull {self.model}' komutunu çalıştırın."
             else:
-                return f"Ollama hata kodu: {r.status_code}"
+                return f"Ollama hata kodu: {r.status_code}. Detay: {r.text}"
         except requests.exceptions.ConnectionError:
             return "Ollama'ya bağlanılamıyor. Lütfen Ollama'nın çalıştığından emin olun."
         except Exception as e:
@@ -489,15 +497,24 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
             self.konuş("Panoya kopyalanamadı.")
 
     def sifre_uret(self, uzunluk: int = 16):
-        """Rastgele güvenli şifre üret"""
+        """Rastgele güvenli şifre üret ve otomatik yapıştır"""
         import string, random
         karakterler = string.ascii_letters + string.digits + "!@#$%&*"
         sifre = ''.join(random.choice(karakterler) for _ in range(uzunluk))
         print(f"🔑 Şifre: {sifre}")
         try:
+            # Panoya kopyala
             subprocess.run(['clip'], input=sifre.encode('utf-8'), check=True)
-            self.konuş(f"{uzunluk} karakterlik güvenli şifre oluşturuldu ve panoya kopyalandı.")
-        except Exception:
+            self.konuş(f"{uzunluk} karakterlik şifre oluşturuldu, panoya kopyalandı ve yapıştırılıyor.")
+            
+            # 1 saniye bekle ki kullanıcı imleci istediği yere getirebilsin (opsiyonel ama güvenli)
+            # time.sleep(0.5) 
+            
+            # Otomatik yapıştır
+            if HAS_EXTRA_MODULES:
+                pyautogui.typewrite(sifre)
+        except Exception as e:
+            print(f"Şifre hatası: {e}")
             self.konuş(f"Şifre oluşturuldu: {sifre}")
 
     def matematik_hesapla(self, ifade: str):
@@ -807,19 +824,19 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         m = metin.lower().strip()
 
         # ── Çıkış ──────────────────────────────
-        if any(x in m for x in ['çıkış', 'kapat asistanı', 'görüşürüz', 'hoşça kal', 'exit', 'quit']):
+        if any(x in m for x in ['çıkış', 'kapat asistanı', 'asistanı kapat', 'görüşürüz', 'hoşça kal', 'exit', 'quit', 'bay bay', 'güle güle', 'programı kapat']):
             self.konuş("Hoşça kalın! İyi günler.")
             return False
 
         # ── Zaman/Tarih ────────────────────────
-        elif any(x in m for x in ['saat kaç', 'saat nedir', 'ne zaman']):
+        elif any(x in m for x in ['saat kaç', 'saat nedir', 'zaman nedir', 'vakit ne', 'şu anki saat']):
             self.zaman_soyle()
 
-        elif any(x in m for x in ['tarih', 'bugün ne', 'hangi gün', 'ayın kaçı']):
+        elif any(x in m for x in ['tarih', 'bugün ne', 'hangi gün', 'ayın kaçı', 'bugünün tarihi']):
             self.tarih_soyle()
 
         # ── Sistem Bilgisi ─────────────────────
-        elif any(x in m for x in ['sistem bilgi', 'cpu', 'ram', 'disk', 'bilgisayar durumu']):
+        elif any(x in m for x in ['sistem bilgi', 'işlemci', 'cpu', 'ram', 'disk', 'bilgisayar durumu', 'pc durumu']):
             self.sistem_bilgisi()
 
         elif any(x in m for x in ['pil', 'batarya', 'şarj']):
@@ -945,9 +962,11 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
             self.ekran_goruntusu_al()
 
         # ── Şifre Üret ───────────────────────
-        elif any(x in m for x in ['şifre üret', 'şifre oluştur', 'parola üret']):
+        elif any(x in m for x in ['şifre üret', 'şifre oluştur', 'parola üret', 'şifre öğret', 'şifre süret', 'şifre süretim', 'parola yap', 'şifre yap']):
             try:
-                uzunluk = int(re.search(r'\d+', m).group())
+                # Metin içindeki sayıyı bul (örn: "20 karakterlik şifre üret")
+                sayi_match = re.search(r'\d+', m)
+                uzunluk = int(sayi_match.group()) if sayi_match else 16
             except:
                 uzunluk = 16
             self.sifre_uret(uzunluk)
@@ -1001,8 +1020,8 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                 self.konuş("Ne tür bir kod yazayım?")
 
         # ── Klasör Oluştur ────────────────────
-        elif any(x in m for x in ['klasör oluştur', 'klasör yap', 'dosya oluştur']):
-            ad = re.sub(r'klasör oluştur|klasör yap|dosya oluştur|masaüstünde|masaüstüne', '', m).strip()
+        elif any(x in m for x in ['klasör oluştur', 'klasör yap', 'dosya oluştur', 'yeni klasör', 'dizin oluştur']):
+            ad = re.sub(r'klasör oluştur|klasör yap|dosya oluştur|yeni klasör|dizin oluştur|masaüstünde|masaüstüne', '', m).strip()
             if ad:
                 self.klasor_olustur(ad)
             else:
