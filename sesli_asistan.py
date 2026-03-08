@@ -92,9 +92,11 @@ UYGULAMALAR = {
     "komut istemi":     "cmd.exe",
     "powershell":       "powershell.exe",
 
-    # Medya
+    # Medya & Eğlence
     "spotify":       r"C:\Users\{user}\AppData\Roaming\Spotify\Spotify.exe",
     "vlc":           r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+    "vlc media":     r"C:\Program Files\VideoLAN\VLC\vlc.exe",
+    "netflix":       r"ms-windows-store://pdp/?ProductId=9WZDNCRFJ3TJ",
     "media player":  "wmplayer.exe",
 
     # Geliştirme
@@ -106,9 +108,16 @@ UYGULAMALAR = {
     "zoom":          r"C:\Users\{user}\AppData\Roaming\Zoom\bin\Zoom.exe",
     "teams":         r"C:\Users\{user}\AppData\Local\Microsoft\Teams\current\Teams.exe",
     "whatsapp":      r"C:\Users\{user}\AppData\Local\WhatsApp\WhatsApp.exe",
+    "discord":       r"C:\Users\{user}\AppData\Local\Discord\app-*\Discord.exe",
     "telegram":      r"C:\Users\{user}\AppData\Roaming\Telegram Desktop\Telegram.exe",
 
-    # Diğer
+    # Araçlar & Tasarım
+    "photoshop":     r"C:\Program Files\Adobe\Adobe Photoshop 2024\Photoshop.exe",
+    "7-zip":         r"C:\Program Files\7-Zip\7zFM.exe",
+    "7zip":          r"C:\Program Files\7-Zip\7zFM.exe",
+    "winrar":        r"C:\Program Files\WinRAR\WinRAR.exe",
+    "drive":         r"C:\Program Files\Google\Drive File Stream\*\GoogleDriveFS.exe",
+    "google drive":  r"C:\Program Files\Google\Drive File Stream\*\GoogleDriveFS.exe",
     "paint":         "mspaint.exe",
     "wordpad":       "wordpad.exe",
     "snipping tool": "snippingtool.exe",
@@ -128,6 +137,7 @@ WEB_SITELERI = {
     "reddit":       "https://www.reddit.com",
     "wikipedia":    "https://www.wikipedia.org",
     "chatgpt":      "https://chat.openai.com",
+    "drive":        "https://drive.google.com",
     "hava durumu":  "https://www.mgm.gov.tr",
 }
 
@@ -388,40 +398,48 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
     # ══════════════════════════════════════════
 
     def uygulama_ac(self, isim: str) -> bool:
-        """Uygulama aç"""
-        isim_lower = isim.lower().strip()
+        """Uygulama aç (Daha hassas eşleşme ve ek temizleme ile)"""
+        # Türkçe ekleri temizle (YouTube'u -> YouTube, Spotify'ı -> Spotify)
+        isim_temiz = re.sub(r'[\'\"].*$', '', isim.lower().strip()) # Suffixleri at (YouTube'u -> youtube)
+        isim_temiz = re.sub(r'(yu|yı|yi|ya|ye|u|ı|i|a|e|nu|nı)$', '', isim_temiz) # Kelime sonundaki ekleri temizle
+        
         kullanici = os.environ.get('USERNAME', 'User')
 
-        # Direkt eşleşme
+        # 1. Tam Eşleşme veya Uygulama Haritası Kontrolü
+        hedef_yol = None
         for anahtar, yol in UYGULAMALAR.items():
-            if anahtar in isim_lower or isim_lower in anahtar:
-                yol = yol.replace('{user}', kullanici)
+            if anahtar == isim_temiz or anahtar in isim_temiz:
+                hedef_yol = yol
+                break
+        
+        if hedef_yol:
+            yol = hedef_yol.replace('{user}', kullanici)
 
-                # Wildcard desteği
-                if '*' in yol:
-                    import glob
-                    eslesmeler = glob.glob(yol)
-                    if eslesmeler:
-                        yol = eslesmeler[-1]
-                    else:
-                        self.konuş(f"{isim} bulunamadı.")
-                        return False
-
-                try:
-                    if self.overlay and hasattr(self.overlay, 'gorev_modu'):
-                        self.overlay.gorev_modu("AÇILIYOR", "#00e5ff") # Turkuaz
-                        
-                    if yol.startswith('ms-'):
-                        os.startfile(yol)
-                    elif os.path.exists(yol):
-                        subprocess.Popen([yol])
-                    else:
-                        subprocess.Popen(yol, shell=True)
-                    self.konuş(f"{isim} açılıyor.")
-                    return True
-                except Exception as e:
-                    self.konuş(f"{isim} açılamadı: {str(e)}")
+            # Wildcard desteği
+            if '*' in yol:
+                import glob
+                eslesmeler = glob.glob(yol)
+                if eslesmeler:
+                    yol = eslesmeler[-1]
+                else:
+                    self.konuş(f"{isim} bulunamadı.")
                     return False
+
+            try:
+                if self.overlay and hasattr(self.overlay, 'gorev_modu'):
+                    self.overlay.gorev_modu("AÇILIYOR", "#00e5ff") # Turkuaz
+                    
+                if yol.startswith('ms-'):
+                    os.startfile(yol)
+                elif os.path.exists(yol):
+                    subprocess.Popen([yol])
+                else:
+                    subprocess.Popen(yol, shell=True)
+                self.konuş(f"{isim} açılıyor.")
+                return True
+            except Exception as e:
+                self.konuş(f"{isim} açılamadı: {str(e)}")
+                return False
 
         self.konuş(f"{isim} uygulaması tanımlanmamış. Aramaya çalışıyorum.")
         return self._uygulama_ara_ac(isim)

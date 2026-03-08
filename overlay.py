@@ -14,7 +14,7 @@ import random
 import psutil
 from datetime import datetime
 
-KONUM_DOSYA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "overlay_konum_pro.json")
+KONUM_DOSYA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aria_ui.json")
 
 class SesOverlay:
     def __init__(self):
@@ -164,6 +164,33 @@ class SesOverlay:
             y2 = cy + math.sin(aci) * (radius + v)
             
             self.canvas.create_line(x1, y1, x2, y2, fill=self.mevcut_ana_renk, width=2, capstyle="round", tags="dalga")
+
+            # Partikül Üretimi (Çok sık olmasın)
+            if v > h_mult * 0.8 and random.random() < 0.15:
+                self.partikuller.append({
+                    "x": x2, "y": y2,
+                    "vx": math.cos(aci) * random.uniform(0.5, 1.5),
+                    "vy": math.sin(aci) * random.uniform(0.5, 1.5),
+                    "life": 1.0, # 1.0 -> 0.0 arası ömür
+                    "color": self.mevcut_ana_renk
+                })
+
+        # Partikülleri Güncelle ve Çiz
+        yeni_partikuller = []
+        for p in self.partikuller:
+            p["x"] += p["vx"]
+            p["y"] += p["vy"]
+            p["life"] -= 0.04
+            
+            if p["life"] > 0:
+                alpha = int(p["life"] * 255)
+                # Basit sönümleme efekti
+                self.canvas.create_oval(
+                    p["x"]-1, p["y"]-1, p["x"]+1, p["y"]+1,
+                    fill=p["color"], outline="", tags="part"
+                )
+                yeni_partikuller.append(p)
+        self.partikuller = yeni_partikuller
 
         self._bilgi_ciz(cx, cy, w, h)
 
