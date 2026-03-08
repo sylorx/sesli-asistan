@@ -145,28 +145,35 @@ class SesliAsistan:
         self.tts = pyttsx3.init()
         self._tts_ayarla()
 
-        # STT - optimize edilmiş parametreler
+        # STT - Maksimum hassasiyet ayarları
         self.recognizer = sr.Recognizer()
-        self.recognizer.energy_threshold = 250       # Daha hassas (düşük = daha duyarlı)
-        self.recognizer.dynamic_energy_threshold = True
-        self.recognizer.dynamic_energy_adjustment_damping = 0.15
-        self.recognizer.dynamic_energy_ratio = 1.5
-        self.recognizer.pause_threshold = 1.2        # Cümle sonunu bekle
-        self.recognizer.non_speaking_duration = 0.5  # Sessizlik eşiği
+        self.recognizer.energy_threshold = 150       # Sabit düşük değer = Çok hassas
+        self.recognizer.dynamic_energy_threshold = False
+        self.recognizer.pause_threshold = 1.6        # Cümle sonunu çok daha uzun bekle
+        self.recognizer.non_speaking_duration = 1.0  # Kelime arası sessizlik payı
 
-        # Overlay
+        # Başlangıçta bir kez ortam sesini analiz et (Sadece 1 saniye)
+        try:
+            with sr.Microphone() as m_init:
+                self.recognizer.adjust_for_ambient_noise(m_init, duration=1.0)
+        except: pass
+
+        # Overlay - Thread güvenli başlatma
         self.overlay = None
         if HAS_OVERLAY:
-            try:
-                self.overlay = SesOverlay()
-                overlay_thread = threading.Thread(
-                    target=self.overlay.baslat, daemon=True
-                )
-                overlay_thread.start()
-                time.sleep(0.3)  # Overlay açılsın
-            except Exception as e:
-                print(f"Overlay başlatılamadı: {e}")
-                self.overlay = None
+            def overlay_baslatici():
+                try:
+                    # Tkinter nesnesi ve mainloop AYNI thread'de olmalı
+                    from overlay import SesOverlay
+                    self.overlay = SesOverlay()
+                    self.overlay.baslat()
+                except Exception as e:
+                    print(f"Overlay hatası: {e}")
+
+            ot = threading.Thread(target=overlay_baslatici, daemon=True)
+            ot.start()
+            # Overlay nesnesinin oluşması için biraz daha fazla bekle
+            time.sleep(1.0)
 
         # Durum
         self.dinliyor = True
@@ -224,20 +231,19 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
             except: pass
 
     def dinle(self, zaman_asimi: int = 7, tekrar: bool = True) -> str | None:
-        """Mikrofondan ses al - optimize edilmiş"""
+        """Mikrofondan ses al - Optimize edilmiş hassas mod"""
         with sr.Microphone() as kaynak:
-            # Overlay dinliyor moduna al
             if self.overlay:
                 try: self.overlay.dinliyor_modu()
                 except: pass
             print("🎤 Dinliyorum...")
-            # Her seferinde kısa ortam sesi analizi
-            self.recognizer.adjust_for_ambient_noise(kaynak, duration=0.3)
             try:
+                # listen başladığında ortam sesini her seferinde analiz etmeye GEREK YOK
+                # bu durum konuşmanın başını kaçırabilir
                 ses = self.recognizer.listen(
                     kaynak,
                     timeout=zaman_asimi,
-                    phrase_time_limit=20
+                    phrase_time_limit=15
                 )
                 print("⚙️ İşleniyor...")
                 if self.overlay:
