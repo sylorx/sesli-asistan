@@ -1216,12 +1216,44 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         print("  Konuşmaya başlayın. 'Çıkış' demek için: 'çıkış' deyin")
         print("═"*60 + "\n")
 
-        devam = True
-        while devam:
+    # ══════════════════════════════════════════
+    #  ANA DÖNGÜ (Wake Word Desteği ile)
+    # ══════════════════════════════════════════
+
+    def calistir(self):
+        """Asistanı uyandırma kelimesi ile çalıştır"""
+        print("\n" + "═"*60)
+        print(f"  {ASISTAN_ADI} Uyku Modunda... ('Aria' veya 'Arya' diyerek uyandırın)")
+        print("═"*60 + "\n")
+
+        uyandirma_kelimeleri = ["aria", "arya", "hadi aria", "hadi arya", "merhaba aria", "merhaba arya", "alo aria"]
+
+        while True:
             try:
-                metin = self.dinle()
+                # 1. Aşama: Uyandırma Kelimesini Dinle
+                metin = self.dinle(zaman_asimi=None) # Pasif dinleme
+                
                 if metin:
-                    devam = self.komut_isle(metin)
+                    # Uyandırma kelimesi kontrolü
+                    uyandi = False
+                    for kelime in uyandirma_kelimeleri:
+                        if kelime in metin:
+                            uyandi = True
+                            break
+                    
+                    if uyandi:
+                        # UYANDI!
+                        self.konuş("Evet, dinliyorum?")
+                        
+                        # 2. Aşama: Komut Dinle
+                        komut = self.dinle(zaman_asimi=7)
+                        if komut:
+                            devam = self.komut_isle(komut)
+                            if not devam:
+                                break
+                        else:
+                            self.konuş("Sizi duyamadım, tekrar uyku moduna geçiyorum.")
+                    
                 time.sleep(0.1)
             except KeyboardInterrupt:
                 self.konuş("Görüşürüz!")

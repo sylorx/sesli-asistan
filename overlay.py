@@ -104,9 +104,9 @@ class SesOverlay:
     def _panel_hazirla(self):
         """Metin ve temel UI elemanları"""
         self.canvas.delete("ui")
-        # Saat ve Model Bilgisi (Normal Modda)
         if not self.mini_mod:
-            self.canvas.create_text(10, 15, text="ARIA PRO", fill="#555", font=("Arial", 7, "bold"), anchor="w", tags="ui")
+            # Köşe Etiketleri
+            self.canvas.create_text(5, 5, text="ARIA", fill="#444", font=("Arial", 6, "bold"), anchor="nw", tags="ui")
 
     def _animasyonu_baslat(self):
         if self.calisiyor:
@@ -115,91 +115,132 @@ class SesOverlay:
             self.root.after(30, self._animasyonu_baslat)
 
     def _ciz(self):
-        self.canvas.delete("dalga", "part")
-        w, h = (160, 80) if self.mini_mod else (240, 140)
+        self.canvas.delete("dalga", "part", "aura")
+        w, h = (160, 40) if self.mini_mod else (200, 60)
         cx, cy = w // 2, h // 2
         
+        # 0. Arka Plan Parlaması (Aura)
+        if self.mod != "bekleme":
+            aura_r = 22 if self.mini_mod else 28
+            aura_color = self.renkler[self.mod]["ana"]
+            # Birkaç katmanlı şeffaf daire ile glow efekti
+            for r_off in [5, 10, 15]:
+                self.canvas.create_oval(
+                    cx-(aura_r+r_off), cy-(aura_r+r_off), 
+                    cx+(aura_r+r_off), cy+(aura_r+r_off),
+                    outline="", fill=aura_color, stipple="gray12", tags="aura"
+                )
+
         # 1. Renk Fade Efekti
         hedef_renk = self.renkler[self.mod]["ana"]
         self.mevcut_ana_renk = self._renk_fade(self.mevcut_ana_renk, hedef_renk)
         
-        # 2. Dairesel Ses Dalgası (Circular Wave)
+        # 2. Dairesel Ses Dalgası (Neon & Gradient)
         n_bars = 40
-        radius = 25 if self.mini_mod else 35
+        radius = 12 if self.mini_mod else 17
         
         for i in range(n_bars):
             aci = math.radians((i / n_bars) * 360)
             
-            # Dalga yüksekliği moda göre değişir
+            # Dalga yüksekliği matematiği
             if self.mod == "dinliyor":
-                v = math.sin(self.faz*2 + i*0.5) * 15 + random.random()*5
+                # Neon Yeşil Akış
+                v = math.sin(self.faz*2.5 + i*0.6) * 9 + random.random()*4
+                hue = 140 + math.sin(self.faz + i*0.1)*20 # Yeşil tonları arası geçiş
             elif self.mod == "konuşuyor":
-                v = math.sin(self.faz*3 + i*0.8) * 25 + random.random()*10
-            else: # bekleme
-                v = math.sin(self.faz*0.5 + i*0.3) * 3
+                # Neon Mor/Magenta Akış
+                v = math.sin(self.faz*3.8 + i*0.8) * 13 + random.random()*5
+                hue = 280 + math.sin(self.faz*1.5 + i*0.2)*30 # Mor tonları arası geçiş
+            else:
+                v = math.sin(self.faz*0.6 + i*0.4) * 2
+                hue = 220 # Sabit Mavi
             
-            v = max(2, abs(v))
+            v = max(1.5, abs(v))
+            bar_color = self._hsl_to_hex(hue, 100, 60)
+            bar_parlak = self._hsl_to_hex(hue, 100, 80) # Uçlar daha parlak
+            
             x1 = cx + math.cos(aci) * radius
             y1 = cy + math.sin(aci) * radius
             x2 = cx + math.cos(aci) * (radius + v)
             y2 = cy + math.sin(aci) * (radius + v)
             
-            self.canvas.create_line(x1, y1, x2, y2, fill=self.mevcut_ana_renk, width=3, capstyle="round", tags="dalga")
+            # Gradyan efekti için iki parça çiziyoruz (İç koyu, uç parlak)
+            mid_x = x1 + (x2 - x1) * 0.6
+            mid_y = y1 + (y2 - y1) * 0.6
             
-            # 3. Partikül Efekti (Barların Ucundan)
-            if (self.mod != "bekleme" or random.random() > 0.95) and i % 4 == 0:
-                if len(self.partikuller) < 50:
+            self.canvas.create_line(x1, y1, mid_x, mid_y, fill=bar_color, width=2, capstyle="round", tags="dalga")
+            self.canvas.create_line(mid_x, mid_y, x2, y2, fill=bar_parlak, width=3, capstyle="round", tags="dalga")
+            
+            # 3. Partikülleri Barların Ucundan Fırlat
+            if (self.mod != "bekleme" or random.random() > 0.985) and i % 5 == 0:
+                if len(self.partikuller) < 30:
                     self.partikuller.append({
                         "x": x2, "y": y2, 
-                        "vx": math.cos(aci) * (random.random()*2), 
-                        "vy": math.sin(aci) * (random.random()*2),
-                        "life": 1.0, "color": self.renkler[self.mod]["p"]
+                        "vx": math.cos(aci) * (0.5 + random.random()), 
+                        "vy": math.sin(aci) * (0.5 + random.random()),
+                        "life": 1.0, "color": bar_parlak
                     })
         
-        # Partikülleri güncelle ve çiz
         for p in self.partikuller[:]:
             p["x"] += p["vx"]
             p["y"] += p["vy"]
-            p["life"] -= 0.05
+            p["life"] -= 0.08
             if p["life"] <= 0:
                 self.partikuller.remove(p)
             else:
-                s = int(3 * p["life"])
+                s = int(2 * p["life"])
                 self.canvas.create_oval(p["x"]-s, p["y"]-s, p["x"]+s, p["y"]+s, fill=p["color"], outline="", tags="part")
 
-        # 4. Bilgi Yazıları
         self._bilgi_ciz(cx, cy, w, h)
 
+    def _hsl_to_hex(self, h, s, l):
+        """Basit HSL to Hex çevirici"""
+        h /= 360; s /= 100; l /= 100
+        if s == 0: r = g = b = l
+        else:
+            def hue_to_rgb(p, q, t):
+                if t < 0: t += 1
+                if t > 1: t -= 1
+                if t < 1/6: return p + (q - p) * 6 * t
+                if t < 1/2: return q
+                if t < 2/3: return p + (q - p) * (2/3 - t) * 6
+                return p
+            q = l * (1 + s) if l < 0.5 else l + s - l * s
+            p = 2 * l - q
+            r = hue_to_rgb(p, q, h + 1/3)
+            g = hue_to_rgb(p, q, h)
+            b = hue_to_rgb(p, q, h - 1/3)
+        return '#%02x%02x%02x' % (int(r * 255), int(g * 255), int(b * 255))
+
     def _bilgi_ciz(self, cx, cy, w, h):
-        if self.mini_mod:
-             self.canvas.create_text(cx, cy, text=self.mod.upper(), fill="white", font=("Arial", 6, "bold"), tags="dalga")
-             return
+        if self.mini_mod: return
 
-        # Saat (Sağ Üst)
+        # Saat (Sağ Üst Köşeye TAM YASLA)
         simdi = datetime.now().strftime("%H:%M")
-        self.canvas.create_text(w-10, 15, text=simdi, fill="#888", font=("Arial", 8), anchor="e", tags="dalga")
+        self.canvas.create_text(w-2, 2, text=simdi, fill="#444", font=("Arial", 6), anchor="ne", tags="dalga")
         
-        # Durum Yazısı (Merkez)
-        txt = "ARIA DİNLİYOR" if self.mod == "dinliyor" else "ARIA KONUŞUYOR" if self.mod == "konuşuyor" else "Aria Beklemede"
-        self.canvas.create_text(cx, cy, text=txt, fill="white", font=("Arial", 8, "bold"), tags="dalga")
+        # 1. DURUM YAZISI (DAİRE İÇİ)
+        txt = "DİNLE" if self.mod == "dinliyor" else "ARIA" if self.mod == "konuşuyor" else ""
+        if txt:
+            self.canvas.create_text(cx, cy, text=txt, fill="white", font=("Arial", 5, "bold"), tags="dalga")
         
-        # Son Komut (Alt)
+        # 2. SON KOMUT (ÜST ORTA)
         if self.son_komut:
-            kisa = self.son_komut[:35] + ("..." if len(self.son_komut) > 35 else "")
-            self.canvas.create_text(cx, h-25, text=kisa, fill="#aaa", font=("Arial", 7, "italic"), tags="dalga")
+            kisa = self.son_komut[:24].upper() + (".." if len(self.son_komut) > 24 else "")
+            self.canvas.create_text(cx, 6, text=kisa, fill="#555", font=("Arial", 5, "italic"), tags="dalga")
 
-        # Model İsmi
-        self.canvas.create_text(10, h-15, text=f"Model: {self.aktif_model}", fill="#555", font=("Arial", 6), anchor="w", tags="dalga")
+        # 3. AKTİF MODEL (SOL ALT KÖŞEYE TAM YASLA)
+        m_ad = self.aktif_model.split(":")[0] 
+        self.canvas.create_text(2, h-2, text=m_ad, fill="#444", font=("Arial", 5), anchor="sw", tags="dalga")
 
-        # CPU / RAM Bar (Küçük çubuklar)
+        # 4. SİSTEM BARI (SAĞ ALT KÖŞEYE TAM YASLA)
         cpu = psutil.cpu_percent()
         ram = psutil.virtual_memory().percent
-        # CPU Bar
-        self.canvas.create_rectangle(w-60, h-15, w-10, h-12, fill="#222", outline="", tags="dalga")
-        self.canvas.create_rectangle(w-60, h-15, w-60 + (cpu*0.5), h-12, fill="#00bcd4", outline="", tags="dalga")
-        # RAM Bar
-        self.canvas.create_rectangle(w-60, h-8, w-10, h-5, fill="#222", outline="", tags="dalga")
-        self.canvas.create_rectangle(w-60, h-8, w-60 + (ram*0.5), h-5, fill="#ff9800", outline="", tags="dalga")
+        # CPU & RAM 
+        self.canvas.create_rectangle(w-32, h-9, w-2, h-8, fill="#111", outline="", tags="dalga")
+        self.canvas.create_rectangle(w-32, h-9, w-32 + (cpu*0.3), h-8, fill="#00bcd4", outline="", tags="dalga")
+        self.canvas.create_rectangle(w-32, h-6, w-2, h-5, fill="#111", outline="", tags="dalga")
+        self.canvas.create_rectangle(w-32, h-6, w-32 + (ram*0.3), h-5, fill="#ff9800", outline="", tags="dalga")
 
     # --- YARDIMCI FONKSİYONLAR ---
     def _renk_fade(self, mevcut, hedef):
