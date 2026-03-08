@@ -172,6 +172,12 @@ class SesliAsistan:
                     print(f"  [{i}] {ad}")
             except: pass
 
+        # Durum ve Başlangıç Ayarları
+        self.dinliyor = True
+        self.model = DEFAULT_MODEL
+        self.sohbet_gecmisi = []
+        self.mevcut_ollama_modeller = []
+
         # Overlay - Thread güvenli başlatma
         self.overlay = None
         if HAS_OVERLAY:
@@ -184,18 +190,12 @@ class SesliAsistan:
                         self.overlay.set_model(self.model)
                     self.overlay.baslat()
                 except Exception as e:
-                    print(f"Overlay hatası: {e}")
+                    print(f"Overlay hatası (Thread): {e}")
 
             ot = threading.Thread(target=overlay_baslatici, daemon=True)
             ot.start()
-            # Overlay nesnesinin oluşması için biraz daha fazla bekle
+            # Overlay nesnesinin oluşması için bekle
             time.sleep(1.0)
-
-        # Durum
-        self.dinliyor = True
-        self.model = DEFAULT_MODEL
-        self.sohbet_gecmisi = []
-        self.mevcut_ollama_modeller = []
 
         # Sistem promptu
         self.sistem_promptu = f"""Sen {ASISTAN_ADI} adlı Türkçe konuşan bir sesli asistansın.
