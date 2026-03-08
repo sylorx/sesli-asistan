@@ -162,7 +162,7 @@ class SesliAsistan:
         print(f"  {ASISTAN_ADI} - Sesli Asistan Başlatılıyor...")
         print(f"{'═'*60}\n")
 
-        # TTS Motoru
+        self.dil = "tr"  # "tr" veya "en"
         self.tts = pyttsx3.init()
         self._tts_ayarla()
 
@@ -227,12 +227,8 @@ class SesliAsistan:
             # Overlay nesnesinin oluşması için bekle
             time.sleep(1.0)
 
-        # Sistem promptu
-        self.sistem_promptu = f"""Sen {ASISTAN_ADI} adlı Türkçe konuşan bir sesli asistansın.
-Kullanıcının bilgisayarını yönetmesine yardımcı oluyorsun.
-Cevaplarını kısa, net ve Türkçe ver. Sesli okunacak olduğundan 
-emoji, madde işareti veya özel karakter kullanma. Sadece düz metin yaz.
-Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
+        # Sistem promptu (Dinamik)
+        self._prompt_guncelle()
 
         # Ek modüller
         if HAS_EXTRA_MODULES:
@@ -241,24 +237,62 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
         self.konuş(f"Merhaba! Ben {ASISTAN_ADI}. Nasıl yardımcı olabilirim?")
         self._ollama_kontrol()
 
-    def _tts_ayarla(self):
-        """Türkçe ses ayarları"""
+    def _tts_ayarla(self, dil=None):
+        """TTS Ses ayarları (Türkçe/İngilizce destekli)"""
+        hedef_dil = dil if dil else self.dil
         sesler = self.tts.getProperty('voices')
-        turkce_ses = None
+        uygun_ses = None
+        
         for ses in sesler:
-            if 'turkish' in ses.name.lower() or 'tr' in ses.id.lower() or 'türk' in ses.name.lower():
-                turkce_ses = ses.id
-                break
+            s_name = ses.name.lower()
+            s_id = ses.id.lower()
+            
+            if hedef_dil == "tr":
+                if 'turkish' in s_name or 'tr' in s_id or 'türk' in s_name:
+                    uygun_ses = ses.id
+                    break
+            else: # English
+                if 'english' in s_name or 'en' in s_id or 'united states' in s_name:
+                    uygun_ses = ses.id
+                    break
 
-        if turkce_ses:
-            self.tts.setProperty('voice', turkce_ses)
+        if uygun_ses:
+            self.tts.setProperty('voice', uygun_ses)
+        elif sesler:
+            self.tts.setProperty('voice', sesler[0].id)
+
+        self.tts.setProperty('rate', 185 if hedef_dil == "en" else 175)
+        self.tts.setProperty('volume', 0.95)
+
+    def _prompt_guncelle(self):
+        """Dile göre sistem promptunu güncelle"""
+        tarih = datetime.datetime.now().strftime('%d %B %Y, %H:%M')
+        if self.dil == "tr":
+            self.sistem_promptu = f"""Sen {ASISTAN_ADI} adlı Türkçe konuşan bir sesli asistansın.
+Kullanıcının bilgisayarını yönetmesine yardımcı oluyorsun.
+Cevaplarını kısa, net ve Türkçe ver. Sadece düz metin yaz (emoji/markdown kullanma).
+Tarih: {tarih}"""
         else:
-            # İngilizce ses ama yine de çalışır
-            if sesler:
-                self.tts.setProperty('voice', sesler[0].id)
+            self.sistem_promptu = f"""You are {ASISTAN_ADI}, an English speaking AI assistant.
+You help the user manage their Windows computer.
+Keep answers short, clear, and in English. Use only plain text (no emojis/markdown).
+Date: {tarih}"""
 
-        self.tts.setProperty('rate', 175)    # Konuşma hızı
-        self.tts.setProperty('volume', 0.95) # Ses seviyesi
+    def dil_degistir(self, yeni_dil: str):
+        """Asistan dilini değiştir (tr <-> en)"""
+        if yeni_dil == self.dil: return
+        
+        self.dil = yeni_dil
+        self._tts_ayarla()
+        self._prompt_guncelle()
+        
+        if HAS_EXTRA_MODULES:
+            wikipedia.set_lang("tr" if self.dil == "tr" else "en")
+            
+        if self.dil == "en":
+            self.konuş("Language switched to English. How can I help you?")
+        else:
+            self.konuş("Dil Türkçe olarak değiştirildi. Size nasıl yardımcı olabilirim?")
 
     def konuş(self, metin: str):
         """Metni sesli oku"""
@@ -293,7 +327,7 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
                 )
                 print("⚙️ İşleniyor...")
                 metin = self.recognizer.recognize_google(
-                    ses, language='tr-TR',
+                    ses, language='tr-TR' if self.dil == "tr" else 'en-US',
                     show_all=False
                 )
                 if self.overlay:
@@ -1051,6 +1085,14 @@ Tarih/saat bilgisi: {datetime.datetime.now().strftime('%d %B %Y, %H:%M')}"""
             kelimeler = kelimeler.replace(' aç', '').replace(' başlat', '').replace(' çalıştır', '').strip()
             if kelimeler:
                 self.uygulama_ac(kelimeler)
+
+        # ── Dil Değiştirme ────────────────────
+        elif self.dil == "tr" and ('ingilizce yap' in m or 'switch to english' in m or 'ingilizceye geç' in m):
+            self.dil_degistir("en")
+            return True
+        elif self.dil == "en" and ('türkçe yap' in m or 'switch to turkish' in m or 'türkçeye geç' in m):
+            self.dil_degistir("tr")
+            return True
 
         # ── Uygulama Kapat ─────────────────────
         elif 'kapat' in m and any(x in m for x in list(UYGULAMALAR.keys()) + ['uygulama']):
