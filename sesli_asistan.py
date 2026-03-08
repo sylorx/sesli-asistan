@@ -267,16 +267,20 @@ class SesliAsistan:
         """Dile göre sistem promptunu güncelle"""
         tarih = datetime.datetime.now().strftime('%d %B %Y, %H:%M')
         if self.dil == "tr":
-            self.sistem_promptu = f"""Senin adın {ASISTAN_ADI}. Sen akıllı ve nazik bir yapay zeka asistanısın.
-Geçmiş konuşmaları (sohbet bağlamını) DİKKATE AL. Sana "anlamı nedir" diye sorulduğunda bir önceki konuştuğumuz kelimenin anlamını söyle.
-Lütfen cevaplarını çok kısa, net ve öz tut. Gereksiz uzatmalardan kaçın.
-Cevapların doğrudan sorunun yanıtı olsun. Sadece düz metin yaz (emoji veya markdown kullanma).
+            self.sistem_promptu = f"""Senin adın {ASISTAN_ADI}. Çok zeki, samimi ve %100 TÜRKÇE konuşan bir asistansın.
+Şartlar:
+1. Kesinlikle "Ben bir yapay zeka dil modeliyim" gibi robotik/sıkıcı cümleler YAPMA. Bir insan gibi doğal ve sıcak konuş.
+2. SANA TÜRKÇE BİR KELİMENİN ANLAMI SORULDUĞUNDA ONU İNGİLİZCEYE ÇEVİRME! Türkçe olarak ne anlama geldiğini açıkla.
+3. Geçmiş konuşmaları DİKKATE AL.
+4. Cevaplarını olabildiğince kısa, net ve tek nefeste okunacak gibi ver. Sadece düz metin yaz (emoji kullanma).
 Tarih: {tarih}"""
         else:
-            self.sistem_promptu = f"""Your name is {ASISTAN_ADI}. You are a smart and polite AI assistant.
-REMEMBER the conversation context. If asked "what does it mean", explain the word we just talked about.
-Keep your answers very short, concise, and straight to the point.
-Answer directly without unnecessary fluff. Use only plain text (no emojis or markdown).
+            self.sistem_promptu = f"""Your name is {ASISTAN_ADI}. You are a smart, friendly, and 100% ENGLISH speaking assistant.
+Rules:
+1. NEVER say "I am an AI language model." Be natural, warm, and human-like.
+2. Always keep your answers extremely short and concise. No fluff.
+3. REMEMBER the conversation context. If asked about a word, explain it based on the previous message.
+4. Use only plain text (no emojis or markdown).
 Date: {tarih}"""
 
     def dil_degistir(self, yeni_dil: str):
@@ -1306,7 +1310,14 @@ Date: {tarih}"""
             return True
             
         elif metin in ['nasılsın', 'naber', 'ne haber', 'durumlar nasıl']:
-            self.konuş("Ben bir yapay zekayım, sizin talimatlarınızı bekliyorum. Siz nasılsınız?")
+            import random
+            cevap = random.choice([
+                "Harikayım, teşekkür ederim! Sen nasılsın?",
+                "Çok iyiyim, sana yardım etmeye hazırım. Sende durumlar nasıl?",
+                "Bomba gibiyim! Senin için ne yapabilirim?",
+                "İyiyim, sorduğun için teşekkürler. Her şey yolunda mı?"
+            ])
+            self.konuş(cevap)
             return True
 
         # ── Yardım ───────────────────────────
@@ -1377,7 +1388,7 @@ Date: {tarih}"""
                             
                         # Uyanık kaldığı sürece peş peşe komut dinlemeye devam et
                         while devam_etsin_mi:
-                            komut = self.dinle(zaman_asimi=10) # 10 saniye bekle
+                            komut = self.dinle(zaman_asimi=15) # 15 saniye bekle
                             if komut:
                                 # İşi bitince elle uyutmak için
                                 if any(x in komut.lower() for x in ['teşekkür', 'uyku moduna geç', 'sağol', 'yeterli', 'bu kadar', 'uyu']):
@@ -1396,6 +1407,11 @@ Date: {tarih}"""
                                     self.konuş("Sizi duyamadım, uyku moduna geçiyorum.")
                                 print("🌙 Asistan uyku moduna döndü.")
                                 break
+                    else:
+                        # Sizi duydu ama uyandırma kelimesi yoksa
+                        if metin and len(metin.strip()) > 2:
+                            print(f"💡 Uyku Modunda Algılandı: '{metin}'")
+                            self.konuş("Şu an uyku modundayım. İşlem yapmam için lütfen 'Aria' diyerek bana seslenin.")
                     
                 time.sleep(0.1)
             except KeyboardInterrupt:
