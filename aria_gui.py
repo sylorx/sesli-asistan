@@ -320,13 +320,11 @@ class AriaGUI:
         self.attached_image = None
         self.btn_attach.configure(fg_color="#34495e", text="📎") # Reset
         
-        # UI donmaması için Asistanı Thread üzerinden çalıştırıyoruz
-        def run_cmd():
-            if self.asistan:
-                print(f"👤 Sen: {msg if msg else '[Resim Gönderildi]'}")
-                self.asistan.komut_isle(msg if msg else "Şu görsele dikkatlice bakıp ne gördüğünü analiz eder misin?", resim_yolu=secili_resim)
-        
-        threading.Thread(target=run_cmd, daemon=True).start()
+        if self.asistan:
+            ikame_metin = msg if msg else "Şu görsele dikkatlice bakıp ne gördüğünü analiz eder misin?"
+            if secili_resim:
+                self.asistan.gecici_resim_yolu = secili_resim
+            self.asistan.manuel_komut.put(ikame_metin)
 
     def setup_settings_tab(self):
         tab = self.tab_view.tab("Ayarlar")
@@ -624,11 +622,8 @@ class AriaGUI:
         ctk.CTkButton(gecmis_frame, text="Yükle", width=100, command=self.load_chat_history).grid(row=0, column=2, padx=5)
 
     def run_quick_command(self, komut):
-        def run():
-            if self.asistan:
-                print(f"👤 Sen: {komut}")
-                self.asistan.komut_isle(komut)
-        threading.Thread(target=run, daemon=True).start()
+        if self.asistan:
+            self.asistan.manuel_komut.put(komut)
 
     def save_chat_history(self):
         dosya = ctk.filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])

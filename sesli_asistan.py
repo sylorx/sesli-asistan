@@ -201,11 +201,14 @@ class SesliAsistan:
                     print(f"  [{i}] {ad}")
             except: pass
 
-        self.son_sifre = ""
         self.dinliyor = True
         self.model = DEFAULT_MODEL
         self.sohbet_gecmisi = []
         self.mevcut_ollama_modeller = []
+        
+        import queue
+        self.manuel_komut = queue.Queue()
+        self.gecici_resim_yolu = None # GUI'den gelen resimler için
 
         # Overlay - Thread güvenli başlatma
         self.overlay = None
@@ -317,48 +320,73 @@ Date: {tarih}"""
 
     def dinle(self, zaman_asimi: int = 7, tekrar: bool = True) -> str | None:
         """Mikrofondan ses al - Varsayılan mikrofonu kullanır"""
+        
+        # Dinlemeye başlamadan önce GUI'den manuel komut var mı kontrol et
+        try:
+            manuel = self.manuel_komut.get_nowait()
+            print(f"👤 Sen: {manuel}")
+            return manuel
+        except: pass
+
+        baslangic_vakti = time.time()
+        timeout_limit = zaman_asimi if zaman_asimi else 86400 # yoksa 1 gün bekle
+
         with sr.Microphone(device_index=self.mikrofon_index) as kaynak:
             if self.overlay:
                 try: self.overlay.dinliyor_modu()
                 except: pass
             print("🎤 Dinliyorum...")
-            try:
-                # listen başladığında ortam sesini her seferinde analiz etmeye GEREK YOK
-                # bu durum konuşmanın başını kaçırabilir
-                ses = self.recognizer.listen(
-                    kaynak,
-                    timeout=zaman_asimi,
-                    phrase_time_limit=15
-                )
-                print("⚙️ İşleniyor...")
-                metin = self.recognizer.recognize_google(
-                    ses, language='tr-TR' if self.dil == "tr" else 'en-US',
-                    show_all=False
-                )
-                if self.overlay:
-                    try: self.overlay.bekleme_modu(son_komut=metin)
-                    except: pass
-                metin_sonuc = metin.lower()
-                print(f"👤 Sen: {metin}")
-                return metin_sonuc
-            except sr.WaitTimeoutError:
-                if self.overlay:
-                    try: self.overlay.bekleme_modu()
-                    except: pass
-                return None
-            except sr.UnknownValueError:
-                print("❓ Anlaşılamadı.")
-                if self.overlay:
-                    try: self.overlay.bekleme_modu()
-                    except: pass
-                return "" # Sesi duydu ama anlamadıysa None dönme, boş metin dön ki uyumasın
-            except sr.RequestError as e:
-                print(f"❌ Google STT hatası: {e}")
-                if self.overlay:
-                    try: self.overlay.bekleme_modu()
-                    except: pass
-                self.konuş("İnternet bağlantısı sorunu var.")
-                return None
+            
+            # Kuyruğu kontrol etmek için bloklamayan küçük timeout'lar (1 sn) ile döngüde dinle
+            while True:
+                # GUI'den komut geldiyse hemen dön
+                try:
+                    manuel2 = self.manuel_komut.get_nowait()
+                    print(f"👤 Sen: {manuel2}")
+                    return manuel2
+                except: pass
+
+                # Zaman aşımı dolduysa çık
+                if (time.time() - baslangic_vakti) > timeout_limit:
+                    if self.overlay:
+                        try: self.overlay.bekleme_modu()
+                        except: pass
+                    return None
+
+                try:
+                    ses = self.recognizer.listen(
+                        kaynak,
+                        timeout=0.5, # 0.5 saniyede bir kuyruk kontrolü yapar
+                        phrase_time_limit=15
+                    )
+                    
+                    print("⚙️ İşleniyor...")
+                    metin = self.recognizer.recognize_google(
+                        ses, language='tr-TR' if self.dil == "tr" else 'en-US',
+                        show_all=False
+                    )
+                    if self.overlay:
+                        try: self.overlay.bekleme_modu(son_komut=metin)
+                        except: pass
+                    metin_sonuc = metin.lower()
+                    print(f"👤 Sen: {metin}")
+                    return metin_sonuc
+                    
+                except sr.WaitTimeoutError:
+                    continue # Döngü devam eder, kuyruğa tekrar bakar
+                except sr.UnknownValueError:
+                    print("❓ Anlaşılamadı.")
+                    if self.overlay:
+                        try: self.overlay.bekleme_modu()
+                        except: pass
+                    return "" # Sesi duydu ama anlamadı
+                except sr.RequestError as e:
+                    print(f"❌ Google STT hatası: {e}")
+                    if self.overlay:
+                        try: self.overlay.bekleme_modu()
+                        except: pass
+                    self.konuş("İnternet bağlantısı sorunu var.")
+                    return None
 
     # ══════════════════════════════════════════
     #  OLLAMA ENTEGRASYONU
@@ -1402,7 +1430,11 @@ Date: {tarih}"""
                                     self.konuş("Rica ederim. Uyku moduna dönüyorum.")
                                     break
                                 
-                                devam_etsin_mi = self.komut_isle(komut)
+                                # GUI'den gelen geçici resmi kontrol et ve kullan
+                                aktif_resim = getattr(self, "gecici_resim_yolu", None)
+                                self.gecici_resim_yolu = None
+                                
+                                devam_etsin_mi = self.komut_isle(komut, resim_yolu=aktif_resim)
                                 islem_yapildi_mi = True
                                 if not devam_etsin_mi: return # Programı komple kapat ("çıkış" komutu)
                             elif komut == "":
