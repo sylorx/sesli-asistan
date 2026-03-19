@@ -3,6 +3,7 @@ import threading
 import time
 import os
 import json
+import datetime
 import winreg
 
 try:
@@ -95,10 +96,15 @@ class AriaGUI:
         if bg_path: self.apply_bg(bg_path)
         
         self.attached_image = None
+        self.mesaj_sayisi = 0
+        self.baslangic_zamani = time.time()
         
         self.asistan = None
         self.asistan_thread = threading.Thread(target=self.start_asistan, daemon=True)
         self.asistan_thread.start()
+        
+        # Canlı Sistem Monitörü güncelleme döngüsü
+        self.app.after(2000, self.update_system_monitor)
 
     def fade_in(self):
         c_alpha = self.app.attributes("-alpha")
@@ -145,6 +151,7 @@ class AriaGUI:
         if "👤 Sen:" in text:
             msg = text.replace("👤 Sen:", "").strip()
             self.add_chat_bubble(msg, sender="user")
+            self.mesaj_sayisi += 1
         elif f"🔊 {ASISTAN_ADI}:" in text:
             msg = text.replace(f"🔊 {ASISTAN_ADI}:", "").strip()
             self.add_chat_bubble(msg, sender="aria")
@@ -205,45 +212,61 @@ class AriaGUI:
         # ── SOL MENÜ (Sidebar) ──
         self.sidebar = ctk.CTkFrame(self.app, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
-        self.sidebar.grid_rowconfigure(5, weight=1)
+        self.sidebar.grid_rowconfigure(8, weight=1)
 
         # UI Marka / Logo
         self.logo_label = ctk.CTkLabel(self.sidebar, text=f"{ASISTAN_ADI} AI", font=ctk.CTkFont(size=28, weight="bold"))
-        self.logo_label.grid(row=0, column=0, padx=20, pady=(30, 10))
+        self.logo_label.grid(row=0, column=0, padx=20, pady=(20, 5))
 
-        # Status göstergesi (Sabit Genişlik: Taşmaları Önler)
-        self.status_label = ctk.CTkLabel(self.sidebar, text="Durum: Başlangıç...", text_color="#aaaaaa", font=ctk.CTkFont(size=13, weight="normal"), width=220, wraplength=210)
-        self.status_label.grid(row=1, column=0, padx=20, pady=5)
+        # Status göstergesi
+        self.status_label = ctk.CTkLabel(self.sidebar, text="Durum: Başlangıç...", text_color="#aaaaaa", font=ctk.CTkFont(size=13), width=220, wraplength=210)
+        self.status_label.grid(row=1, column=0, padx=20, pady=3)
         
-        # Animasyonlu Progress Bar (İşlem animasyonu)
+        # Animasyonlu Progress Bar
         self.ai_progress = ctk.CTkProgressBar(self.sidebar, mode="indeterminate", height=6, corner_radius=3)
-        self.ai_progress.grid(row=2, column=0, padx=20, pady=(0, 20), sticky="ew")
-        self.ai_progress.set(0) # Başlangıçta inaktif göster
+        self.ai_progress.grid(row=2, column=0, padx=20, pady=(0, 10), sticky="ew")
+        self.ai_progress.set(0)
+
+        # ── Canlı Sistem Monitörü ──
+        self.monitor_frame = ctk.CTkFrame(self.sidebar, fg_color=("gray85", "gray20"), corner_radius=10)
+        self.monitor_frame.grid(row=3, column=0, padx=15, pady=5, sticky="ew")
+        self.lbl_cpu = ctk.CTkLabel(self.monitor_frame, text="CPU: --%", font=ctk.CTkFont(size=11), anchor="w")
+        self.lbl_cpu.grid(row=0, column=0, padx=10, pady=(5,0), sticky="w")
+        self.lbl_ram = ctk.CTkLabel(self.monitor_frame, text="RAM: --%", font=ctk.CTkFont(size=11), anchor="w")
+        self.lbl_ram.grid(row=1, column=0, padx=10, sticky="w")
+        self.lbl_pil = ctk.CTkLabel(self.monitor_frame, text="Pil: --%", font=ctk.CTkFont(size=11), anchor="w")
+        self.lbl_pil.grid(row=2, column=0, padx=10, pady=(0,5), sticky="w")
 
         # SOHBET Butonu
-        self.btn_chat = ctk.CTkButton(self.sidebar, text="💬  Canlı Sohbet Merkezi", height=40, font=ctk.CTkFont(size=14), command=lambda: self.tab_view.set("Sohbet Merkezi"))
-        self.btn_chat.grid(row=3, column=0, padx=20, pady=10)
+        self.btn_chat = ctk.CTkButton(self.sidebar, text="💬  Sohbet", height=36, font=ctk.CTkFont(size=13), command=lambda: self.tab_view.set("Sohbet Merkezi"))
+        self.btn_chat.grid(row=4, column=0, padx=20, pady=5)
 
         # AYARLAR Butonu
-        self.btn_settings = ctk.CTkButton(self.sidebar, text="⚙️  Gelişmiş Ayarlar", height=40, font=ctk.CTkFont(size=14), fg_color="transparent", border_width=2, text_color=("gray10", "#DCE4EE"), command=lambda: self.tab_view.set("Ayarlar"))
-        self.btn_settings.grid(row=4, column=0, padx=20, pady=10)
+        self.btn_settings = ctk.CTkButton(self.sidebar, text="⚙️  Ayarlar", height=36, font=ctk.CTkFont(size=13), fg_color="transparent", border_width=2, text_color=("gray10", "#DCE4EE"), command=lambda: self.tab_view.set("Ayarlar"))
+        self.btn_settings.grid(row=5, column=0, padx=20, pady=5)
+
+        # HIZLI KOMUTLAR Butonu
+        self.btn_quick = ctk.CTkButton(self.sidebar, text="⚡ Hızlı Komutlar", height=36, font=ctk.CTkFont(size=13), fg_color="transparent", border_width=2, text_color=("gray10", "#DCE4EE"), command=lambda: self.tab_view.set("Hızlı Komutlar"))
+        self.btn_quick.grid(row=6, column=0, padx=20, pady=5)
         
         # UI Teması Seçici
         self.sidebar_theme_label = ctk.CTkLabel(self.sidebar, text="Görünüm Modu:", anchor="w")
-        self.sidebar_theme_label.grid(row=6, column=0, padx=20, pady=(10, 0))
+        self.sidebar_theme_label.grid(row=9, column=0, padx=20, pady=(10, 0))
         self.theme_btn = ctk.CTkOptionMenu(self.sidebar, values=["Dark", "Light", "System"], command=self.change_theme)
-        self.theme_btn.grid(row=7, column=0, padx=20, pady=(10, 20))
+        self.theme_btn.grid(row=10, column=0, padx=20, pady=(5, 15))
 
         # ── SAĞ ALAN (Tab Gösterimi) ──
         self.tab_view = ctk.CTkTabview(self.app, corner_radius=15)
         self.tab_view.grid(row=0, column=1, padx=20, pady=10, sticky="nsew")
         
         self.tab_view.add("Sohbet Merkezi")
+        self.tab_view.add("Hızlı Komutlar")
         self.tab_view.add("Ayarlar")
         self.tab_view.add("Geliştirici")
         self.tab_view.set("Sohbet Merkezi")
 
         self.setup_chat_tab()
+        self.setup_quick_commands_tab()
         self.setup_settings_tab()
         self.setup_dev_tab()
 
@@ -566,13 +589,121 @@ class AriaGUI:
             self.asistan.sohbet_gecmisi = []
             self.add_system_message("Yapay zeka (Ollama) sohbet hafızası sıfırlandı.")
 
+    def setup_quick_commands_tab(self):
+        tab = self.tab_view.tab("Hızlı Komutlar")
+        tab.grid_columnconfigure((0,1,2), weight=1)
+        
+        baslik = ctk.CTkLabel(tab, text="⚡ Hızlı Komutlar", font=ctk.CTkFont(size=20, weight="bold"))
+        baslik.grid(row=0, column=0, columnspan=3, pady=15, padx=20, sticky="w")
+        
+        komutlar = [
+            ("🕐 Saat Kaç?", "saat kaç"), ("📅 Bugün Ne?", "bugünün tarihi"),
+            ("💻 Sistem Bilgisi", "sistem bilgisi"), ("🔋 Pil Durumu", "pil durumu"),
+            ("📶 WiFi Bilgisi", "wifi bilgisi"), ("🌐 IP Adresim", "ip adresim"),
+            ("📷 Ekran Görüntüsü", "ekran görüntüsü al"), ("🔑 Şifre Üret", "şifre oluştur"),
+            ("📋 Günlük Özet", "günlük özet"), ("💰 Dolar Kuru", "dolar kaç tl"),
+            ("💶 Euro Kuru", "euro kaç tl"), ("🚀 Hız Testi", "internet hız testi"),
+            ("📝 Notlarımı Oku", "notlarımı oku"), ("🌡️ Hava Durumu", "hava durumu"),
+            ("🗑️ Çöp Kutusunu Boşalt", "çöp kutusunu boşalt"),
+        ]
+        
+        for i, (label, cmd) in enumerate(komutlar):
+            r = (i // 3) + 1
+            c = i % 3
+            btn = ctk.CTkButton(tab, text=label, height=50, font=ctk.CTkFont(size=13),
+                               fg_color=("gray75", "gray25"), hover_color=("gray65", "gray35"),
+                               command=lambda komut=cmd: self.run_quick_command(komut))
+            btn.grid(row=r, column=c, padx=8, pady=8, sticky="ew")
+        
+        # Sohbet Geçmişi Kaydet/Yükle
+        gecmis_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        gecmis_frame.grid(row=7, column=0, columnspan=3, pady=15, padx=20, sticky="ew")
+        gecmis_frame.grid_columnconfigure((0,1,2), weight=1)
+        ctk.CTkLabel(gecmis_frame, text="💾 Sohbet Geçmişi:", font=ctk.CTkFont(size=14, weight="bold")).grid(row=0, column=0, sticky="w", padx=5)
+        ctk.CTkButton(gecmis_frame, text="Kaydet", width=100, command=self.save_chat_history).grid(row=0, column=1, padx=5)
+        ctk.CTkButton(gecmis_frame, text="Yükle", width=100, command=self.load_chat_history).grid(row=0, column=2, padx=5)
+
+    def run_quick_command(self, komut):
+        def run():
+            if self.asistan:
+                print(f"👤 Sen: {komut}")
+                self.asistan.komut_isle(komut)
+        threading.Thread(target=run, daemon=True).start()
+
+    def save_chat_history(self):
+        dosya = ctk.filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
+        if dosya:
+            self.chat_textbox.configure(state="normal")
+            icerik = self.chat_textbox.get("1.0", "end")
+            self.chat_textbox.configure(state="disabled")
+            veri = {"tarih": datetime.datetime.now().isoformat(), "sohbet": icerik}
+            if self.asistan:
+                veri["model"] = self.asistan.model
+                veri["gecmis"] = self.asistan.sohbet_gecmisi
+            with open(dosya, "w", encoding="utf-8") as f:
+                json.dump(veri, f, ensure_ascii=False, indent=2)
+            self.add_system_message(f"Sohbet geçmişi kaydedildi: {os.path.basename(dosya)}")
+
+    def load_chat_history(self):
+        dosya = ctk.filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+        if dosya:
+            with open(dosya, "r", encoding="utf-8") as f:
+                veri = json.load(f)
+            self.chat_textbox.configure(state="normal")
+            self.chat_textbox.delete("1.0", "end")
+            self.chat_textbox.insert("end", veri.get("sohbet", ""))
+            self.chat_textbox.configure(state="disabled")
+            if self.asistan and "gecmis" in veri:
+                self.asistan.sohbet_gecmisi = veri["gecmis"]
+            self.add_system_message(f"Sohbet geçmişi yüklendi: {os.path.basename(dosya)}")
+
+    def update_system_monitor(self):
+        try:
+            import psutil
+            cpu = psutil.cpu_percent(interval=0)
+            ram = psutil.virtual_memory().percent
+            self.lbl_cpu.configure(text=f"⚡ CPU: {cpu}%", text_color="#e74c3c" if cpu > 80 else "#2ecc71")
+            self.lbl_ram.configure(text=f"🧠 RAM: {ram}%", text_color="#e74c3c" if ram > 85 else "#3498db")
+            try:
+                pil = psutil.sensors_battery()
+                if pil:
+                    renk = "#e74c3c" if pil.percent < 20 else "#2ecc71"
+                    sarj = "⚡" if pil.power_plugged else "🔋"
+                    self.lbl_pil.configure(text=f"{sarj} Pil: {int(pil.percent)}%", text_color=renk)
+                else:
+                    self.lbl_pil.configure(text="🔌 Masaüstü")
+            except:
+                self.lbl_pil.configure(text="🔌 Masaüstü")
+        except: pass
+        self.app.after(3000, self.update_system_monitor)
+
+    def update_stats(self):
+        gecen = int((time.time() - self.baslangic_zamani) / 60)
+        self.lbl_stat_msg.configure(text=f"💬 Mesaj: {self.mesaj_sayisi}")
+        self.lbl_stat_time.configure(text=f"⏱️ Süre: {gecen}dk")
+        if self.asistan:
+            self.lbl_stat_model.configure(text=f"🧠 {self.asistan.model}")
+        self.app.after(5000, self.update_stats)
+
     def setup_dev_tab(self):
         tab = self.tab_view.tab("Geliştirici")
         tab.grid_columnconfigure(0, weight=1)
-        tab.grid_rowconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+        
+        # İstatistikler
+        self.stats_frame = ctk.CTkFrame(tab, fg_color=("gray85", "gray20"), corner_radius=10)
+        self.stats_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=(10,5))
+        self.stats_frame.grid_columnconfigure((0,1,2), weight=1)
+        self.lbl_stat_msg = ctk.CTkLabel(self.stats_frame, text="Mesaj: 0", font=ctk.CTkFont(size=12))
+        self.lbl_stat_msg.grid(row=0, column=0, padx=10, pady=8)
+        self.lbl_stat_time = ctk.CTkLabel(self.stats_frame, text="Süre: 0dk", font=ctk.CTkFont(size=12))
+        self.lbl_stat_time.grid(row=0, column=1, padx=10, pady=8)
+        self.lbl_stat_model = ctk.CTkLabel(self.stats_frame, text="Model: -", font=ctk.CTkFont(size=12))
+        self.lbl_stat_model.grid(row=0, column=2, padx=10, pady=8)
+        self.app.after(5000, self.update_stats)
 
         self.dev_textbox = ctk.CTkTextbox(tab, font=ctk.CTkFont(family="Consolas", size=13), wrap="none", corner_radius=10, fg_color="#1e1e1e", text_color="#d4d4d4")
-        self.dev_textbox.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+        self.dev_textbox.grid(row=1, column=0, sticky="nsew", padx=10, pady=(5, 10))
         self.dev_textbox.configure(state="disabled")
         
     def update_ui_language(self, lang):

@@ -1,11 +1,11 @@
 {
-    "width": 1000,
-    "height": 650,
+    "width": 133,
+    "height": 133,
     "pos_x": 342,
     "pos_y": 342,
     "theme": "Dark",
     "accent_color": "#238b95",
     "run_on_boot": true,
     "toggle_hotkey": "ctrl+alt+a",
-    "bg_image": "C:/Users/asus/Downloads/image.png"
+    "bg_image": "C:/Users/asus/Downloads/chickens.png"
 }
